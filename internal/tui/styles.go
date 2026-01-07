@@ -287,3 +287,21 @@ func GetResourceStyle(action string) lipgloss.Style {
 		return resourceUpdateStyle
 	}
 }
+
+// GetActionColor returns the color for an action type
+func GetActionColor(action string) lipgloss.Color {
+	switch action {
+	case "create":
+		return createColor
+	case "destroy":
+		return destroyColor
+	case "update":
+		return updateColor
+	case "replace", "delete-create", "create-delete":
+		return replaceColor
+	case "read":
+		return readColor
+	default:
+		return updateColor
+	}
+}

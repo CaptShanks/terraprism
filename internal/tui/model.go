@@ -281,15 +281,14 @@ func (m Model) renderResources() string {
 		}
 
 		// Render resource line
-		line := m.renderResourceLine(r, isExpanded, isMatch)
-		
 		if isSelected {
-			// Pad line to full width for complete highlight
-			line = padToWidth(line, m.width-4)
-			line = selectedStyle.Render(line)
+			// For selected line, render with full-width background highlight
+			line := m.renderSelectedResourceLine(r, isExpanded, isMatch)
+			b.WriteString(line)
+		} else {
+			line := m.renderResourceLine(r, isExpanded, isMatch)
+			b.WriteString(line)
 		}
-		
-		b.WriteString(line)
 		b.WriteString("\n")
 
 		// Render full HCL block if expanded
@@ -304,6 +303,65 @@ func (m Model) renderResources() string {
 	}
 
 	return b.String()
+}
+
+// renderSelectedResourceLine renders a resource line with full-width background highlight
+func (m Model) renderSelectedResourceLine(r parser.Resource, expanded bool, isMatch bool) string {
+	// Build the line content
+	var content strings.Builder
+
+	// Expand/collapse indicator
+	if expanded {
+		content.WriteString("▼")
+	} else {
+		content.WriteString("▶")
+	}
+	content.WriteString(" ")
+
+	// Action symbol
+	switch r.Action {
+	case parser.ActionCreate:
+		content.WriteString("+")
+	case parser.ActionDestroy:
+		content.WriteString("-")
+	case parser.ActionUpdate:
+		content.WriteString("~")
+	case parser.ActionReplace, parser.ActionDeleteCreate, parser.ActionCreateDelete:
+		content.WriteString("±")
+	case parser.ActionRead:
+		content.WriteString("≤")
+	default:
+		content.WriteString("~")
+	}
+	content.WriteString(" ")
+
+	// Resource address
+	content.WriteString(r.Address)
+
+	// Action description
+	actionDesc := getActionDescription(r.Action)
+	content.WriteString(" ")
+	content.WriteString(actionDesc)
+
+	// Line count
+	if len(r.RawLines) > 1 {
+		content.WriteString(fmt.Sprintf(" (%d lines)", len(r.RawLines)-1))
+	}
+
+	// Pad to full width and apply selected style with foreground color
+	line := content.String()
+	targetWidth := m.width - 4
+	if targetWidth > 0 && len(line) < targetWidth {
+		line = line + strings.Repeat(" ", targetWidth-len(line))
+	}
+
+	// Apply style with both foreground and background
+	actionStyle := lipgloss.NewStyle().
+		Background(selectedBg).
+		Foreground(GetActionColor(string(r.Action))).
+		Bold(true)
+
+	return actionStyle.Render(line)
 }
 
 func (m Model) renderResourceLine(r parser.Resource, expanded bool, isMatch bool) string {
