@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tfplanview/tfplanview/internal/parser"
-	"github.com/tfplanview/tfplanview/internal/tui"
+	"github.com/CaptShanks/terraprism/internal/parser"
+	"github.com/CaptShanks/terraprism/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -32,7 +32,7 @@ func main() {
 			printUsage()
 			os.Exit(0)
 		case "-v", "--version":
-			fmt.Printf("tfplanview %s\n", version)
+			fmt.Printf("terraprism %s\n", version)
 			os.Exit(0)
 		case "-p", "--print":
 			printMode = true
@@ -127,16 +127,16 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Printf(`tfplanview %s - Interactive Terraform/OpenTofu plan viewer
+	fmt.Printf(`terraprism %s - Interactive Terraform/OpenTofu plan viewer 🔺✨
 
 USAGE:
-    terraform plan | tfplanview
-    tofu plan | tfplanview
-    tfplanview <plan-file>
-    tfplanview -p <plan-file>    # Print mode (no TUI)
+    terraform plan | terraprism
+    tofu plan | terraprism
+    terraprism <plan-file>
+    terraprism -p <plan-file>    # Print mode (no TUI)
 
 DESCRIPTION:
-    tfplanview provides an interactive terminal UI for viewing Terraform and
+    Terra-Prism provides an interactive terminal UI for viewing Terraform and
     OpenTofu plans. It parses plan output and displays resources in a 
     collapsible, color-coded format for easier review.
 
@@ -166,16 +166,16 @@ OPTIONS:
 
 EXAMPLES:
     # Pipe from terraform
-    terraform plan -no-color | tfplanview
+    terraform plan -no-color | terraprism
 
     # Pipe from tofu
-    tofu plan -no-color | tfplanview
+    tofu plan -no-color | terraprism
 
     # Read from file
-    terraform plan -no-color -out=plan.txt && tfplanview plan.txt
+    terraform plan -no-color -out=plan.txt && terraprism plan.txt
 
     # Print mode (for piping or non-interactive use)
-    terraform plan -no-color | tfplanview -p
+    terraform plan -no-color | terraprism -p
 
 `, version)
 }

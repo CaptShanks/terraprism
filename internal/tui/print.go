@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
-	"github.com/tfplanview/tfplanview/internal/parser"
+	"github.com/CaptShanks/terraprism/internal/parser"
 )
 
 func init() {
@@ -18,7 +18,7 @@ func init() {
 // PrintPlan outputs the plan with colors to stdout (non-interactive mode)
 func PrintPlan(plan *parser.Plan) {
 	// Header
-	fmt.Println(headerStyle.Render("📋 tfplanview - Terraform Plan Viewer"))
+	fmt.Println(headerStyle.Render("🔺 Terra-Prism - Terraform Plan Viewer"))
 	fmt.Println()
 
 	// Summary

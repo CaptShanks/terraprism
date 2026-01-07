@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/ansi"
 
-	"github.com/tfplanview/tfplanview/internal/parser"
+	"github.com/CaptShanks/terraprism/internal/parser"
 )
 
 // padToWidth pads a string with spaces to reach the target width
@@ -657,7 +657,7 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Header
-	header := headerStyle.Render("📋 tfplanview - Terraform Plan Viewer")
+	header := headerStyle.Render("🔺 Terra-Prism - Terraform Plan Viewer")
 	b.WriteString(header)
 	b.WriteString("\n")
 

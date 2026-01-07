@@ -1,4 +1,4 @@
-module github.com/tfplanview/tfplanview
+module github.com/CaptShanks/terraprism
 
 go 1.25.1
 

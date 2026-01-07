@@ -1,38 +1,39 @@
-# tfplanview
+# Terra-Prism 🔺✨
 
-A terminal UI for interactively viewing Terraform and OpenTofu plans with collapsible resources and color-coded changes.
+A beautiful terminal UI for interactively viewing Terraform and OpenTofu plans with collapsible resources and syntax-highlighted colors.
 
-![tfplanview demo](https://user-images.githubusercontent.com/demo/tfplanview-demo.gif)
+![Terra-Prism demo](https://user-images.githubusercontent.com/demo/terraprism-demo.gif)
 
 ## Features
 
-- 🎨 **Color-coded changes**: Green for create, red for destroy, yellow for update, pink for replace
-- 📁 **Collapsible resources**: Expand/collapse individual resources or all at once
-- 🔍 **Search**: Find resources by name, type, or address
-- ⌨️ **Keyboard navigation**: Vim-style keybindings (j/k) plus arrow keys
-- 📋 **Format support**: Works with both Terraform 0.11 and 0.12+ plan formats
-- 🦫 **OpenTofu compatible**: Works seamlessly with `tofu plan` output
+- 🎨 **Syntax-highlighted HCL** - Full color-coded display of your plan
+- 📁 **Collapsible resources** - Expand/collapse individual resources or all at once
+- 🔍 **Search** - Find resources by name, type, or address
+- ⌨️ **Vim-style navigation** - j/k/gg/G/d/u and more
+- 🌗 **Auto light/dark mode** - Detects your terminal background
+- 📋 **Format support** - Works with Terraform 0.11+ and OpenTofu
+- 🎯 **Full-line selection** - Clear visual indicator of selected resource
 
 ## Installation
 
 ### Using Go
 
 ```bash
-go install github.com/tfplanview/tfplanview/cmd/tfplanview@latest
+go install github.com/CaptShanks/terraprism/cmd/terraprism@latest
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/tfplanview/tfplanview.git
-cd tfplanview
+git clone https://github.com/CaptShanks/terraprism.git
+cd terraprism
 make build
 ```
 
 ### Homebrew (coming soon)
 
 ```bash
-brew install tfplanview
+brew install terraprism
 ```
 
 ## Usage
@@ -40,101 +41,108 @@ brew install tfplanview
 ### Pipe from Terraform
 
 ```bash
-terraform plan -no-color | tfplanview
+terraform plan -no-color | terraprism
 ```
 
 ### Pipe from OpenTofu
 
 ```bash
-tofu plan -no-color | tfplanview
+tofu plan -no-color | terraprism
 ```
 
 ### Read from file
 
 ```bash
 terraform plan -no-color > plan.txt
-tfplanview plan.txt
+terraprism plan.txt
 ```
 
-### Save plan and view
+### Print mode (non-interactive)
 
 ```bash
-terraform plan -no-color -out=tfplan && terraform show -no-color tfplan | tfplanview
+terraform plan -no-color | terraprism -p
 ```
 
 ## Keyboard Controls
 
+### Navigation
 | Key | Action |
 |-----|--------|
-| `↑` / `k` | Move cursor up |
-| `↓` / `j` | Move cursor down |
-| `Enter` / `Space` | Toggle expand/collapse current resource |
+| `j` / `↓` | Move to next resource |
+| `k` / `↑` | Move to previous resource |
+| `gg` | Jump to first resource |
+| `G` | Jump to last resource |
+| `d` / `Ctrl+D` | Scroll half page down |
+| `u` / `Ctrl+U` | Scroll half page up |
+
+### Expand/Collapse
+| Key | Action |
+|-----|--------|
+| `Enter` / `Space` | Toggle current resource |
+| `l` / `→` | Expand current resource |
+| `h` / `←` / `⌫` | Collapse current resource |
 | `e` | Expand all resources |
 | `c` | Collapse all resources |
+
+### Search
+| Key | Action |
+|-----|--------|
 | `/` | Start search |
-| `n` | Jump to next search result |
-| `N` | Jump to previous search result |
-| `Esc` | Clear search / Cancel |
+| `n` | Next match |
+| `N` | Previous match |
+| `Esc` | Clear search |
+
+### Other
+| Key | Action |
+|-----|--------|
 | `q` / `Ctrl+C` | Quit |
-| `PgUp` / `PgDown` | Scroll viewport |
 
-## Color Legend
+## Color Themes
 
-| Symbol | Color | Action |
-|--------|-------|--------|
-| `+` | 🟢 Green | Resource will be created |
-| `-` | 🔴 Red | Resource will be destroyed |
-| `~` | 🟡 Yellow | Resource will be updated in-place |
-| `±` | 🟣 Pink | Resource must be replaced (destroy + create) |
-| `≤` | 🔵 Cyan | Data source will be read |
+Terra-Prism automatically detects your terminal background and uses appropriate colors:
 
-## Examples
+### Dark Mode (Catppuccin Mocha)
+- 🟢 Green for resources being created
+- 🔴 Red for resources being destroyed
+- 🟡 Yellow for resources being updated
+- 🟣 Purple for resources being replaced
+- 🔵 Blue for data sources being read
 
-### Basic usage
+### Light Mode (Catppuccin Latte)
+Automatically switches to darker, more visible colors on light backgrounds.
 
+### Force a theme
 ```bash
-# Quick view of plan
-terraform plan -no-color | tfplanview
-
-# With variable file
-terraform plan -var-file=prod.tfvars -no-color | tfplanview
+terraprism --dark plan.txt   # Force dark mode
+terraprism --light plan.txt  # Force light mode
 ```
 
-### CI/CD Integration
+## Options
 
-In a CI environment where you want to save plans for review:
-
-```bash
-# Generate and save plan
-terraform plan -no-color -out=tfplan
-
-# Show plan in human-readable format
-terraform show -no-color tfplan > plan.txt
-
-# View interactively (when connected to terminal)
-tfplanview plan.txt
+```
+-h, --help      Show help message
+-v, --version   Show version
+-p, --print     Print colored output without interactive TUI
+--light         Force light color scheme (Catppuccin Latte)
+--dark          Force dark color scheme (Catppuccin Mocha)
 ```
 
-## Requirements
+## Why Terra-Prism?
 
-- Terminal with true color support (most modern terminals)
-- Terraform 0.11+ or OpenTofu
+Large Terraform plans can be difficult to review:
 
-## Why tfplanview?
+- ❌ Hundreds of resources make it hard to find specific changes
+- ❌ Long attribute values span multiple lines
+- ❌ No easy way to focus on specific resources
+- ❌ Color coding from Terraform can be lost when piping
 
-Large Terraform plans can be difficult to review in a terminal:
+Terra-Prism solves these problems:
 
-- Hundreds of resources make it hard to find specific changes
-- Long attribute values span multiple lines
-- No easy way to focus on specific resources
-- Color coding from Terraform can be lost when piping
-
-tfplanview solves these problems by providing:
-
-- Collapsible sections so you can see the big picture first
-- Consistent color coding regardless of terminal settings
-- Search functionality to find specific resources
-- Truncated long values with full details on expand
+- ✅ Collapsible sections for high-level overview
+- ✅ Consistent syntax highlighting
+- ✅ Search to find specific resources
+- ✅ Vim-style navigation for efficiency
+- ✅ Auto-scrolling keeps selection visible
 
 ## Inspired By
 
@@ -149,8 +157,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ```bash
 # Clone the repo
-git clone https://github.com/tfplanview/tfplanview.git
-cd tfplanview
+git clone https://github.com/CaptShanks/terraprism.git
+cd terraprism
 
 # Install dependencies
 go mod download
@@ -162,10 +170,13 @@ make test
 make build
 
 # Run locally
-./bin/tfplanview
+./bin/terraprism
 ```
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+---
+
+Made with ❤️ and Go
