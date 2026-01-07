@@ -91,140 +91,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		} else {
-			// Reset pending g if any other key is pressed (except g itself)
-			if msg.String() != "g" && msg.String() != "G" {
-				m.pendingG = false
-			}
-
-			switch msg.String() {
-			case "q", "ctrl+c":
-				return m, tea.Quit
-
-			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-					m.updateViewportContent()
-					m.ensureCursorVisible()
-				}
-
-			case "down", "j":
-				if m.cursor < len(m.plan.Resources)-1 {
-					m.cursor++
-					m.updateViewportContent()
-					m.ensureCursorVisible()
-				}
-
-			case "enter", " ":
-				m.expanded[m.cursor] = !m.expanded[m.cursor]
-				m.updateViewportContent()
-				m.ensureCursorVisible()
-
-			case "e":
-				// Expand all
-				for i := range m.plan.Resources {
-					m.expanded[i] = true
-				}
-				m.updateViewportContent()
-				m.ensureCursorVisible()
-
-			case "c":
-				// Collapse all
-				for i := range m.plan.Resources {
-					m.expanded[i] = false
-				}
-				m.updateViewportContent()
-				m.ensureCursorVisible()
-
-			case "/":
-				m.searching = true
-				m.searchInput.Focus()
-				return m, textinput.Blink
-
-			case "n":
-				// Next match
-				if len(m.searchMatches) > 0 {
-					m.currentMatch = (m.currentMatch + 1) % len(m.searchMatches)
-					m.cursor = m.searchMatches[m.currentMatch]
-					m.updateViewportContent()
-					m.ensureCursorVisible()
-				}
-
-			case "N":
-				// Previous match
-				if len(m.searchMatches) > 0 {
-					m.currentMatch--
-					if m.currentMatch < 0 {
-						m.currentMatch = len(m.searchMatches) - 1
-					}
-					m.cursor = m.searchMatches[m.currentMatch]
-					m.updateViewportContent()
-					m.ensureCursorVisible()
-				}
-
-			case "esc":
-				m.searchQuery = ""
-				m.searchMatches = []int{}
-				m.searchInput.SetValue("")
-				m.updateViewportContent()
-
-			case "backspace":
-				// Collapse current resource
-				m.expanded[m.cursor] = false
-				m.updateViewportContent()
-				m.ensureCursorVisible()
-
-			case "d", "ctrl+d":
-				// Half page down (vim style)
-				halfPage := m.viewport.Height / 2
-				m.viewport.SetYOffset(m.viewport.YOffset + halfPage)
-
-			case "u", "ctrl+u":
-				// Half page up (vim style)
-				halfPage := m.viewport.Height / 2
-				newOffset := m.viewport.YOffset - halfPage
-				if newOffset < 0 {
-					newOffset = 0
-				}
-				m.viewport.SetYOffset(newOffset)
-
-			case "g":
-				if m.pendingG {
-					// gg - Go to top
-					m.cursor = 0
-					m.updateViewportContent()
-					m.viewport.GotoTop()
-					m.pendingG = false
-				} else {
-					// First g pressed, wait for second
-					m.pendingG = true
-				}
-
-			case "G":
-				// Go to bottom
-				m.cursor = len(m.plan.Resources) - 1
-				m.updateViewportContent()
-				m.viewport.GotoBottom()
-				m.pendingG = false
-
-			case "pgup":
-				m.viewport.GotoTop()
-				m.viewport.SetYOffset(m.viewport.YOffset - m.viewport.Height)
-
-			case "pgdown":
-				m.viewport.SetYOffset(m.viewport.YOffset + m.viewport.Height)
-
-			case "l", "right":
-				// Expand current (like navigating into)
-				m.expanded[m.cursor] = true
-				m.updateViewportContent()
-				m.ensureCursorVisible()
-
-			case "h", "left":
-				// Collapse current (like navigating out)
-				m.expanded[m.cursor] = false
-				m.updateViewportContent()
-				m.ensureCursorVisible()
-			}
+			return m.handleNormalKey(msg)
 		}
 
 	case tea.MouseMsg:
@@ -233,6 +100,174 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// handleNormalKey handles key presses in normal (non-search) mode
+func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Reset pending g if any other key is pressed (except g itself)
+	if msg.String() != "g" && msg.String() != "G" {
+		m.pendingG = false
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+			m.updateViewportContent()
+			m.ensureCursorVisible()
+		}
+
+	case "down", "j":
+		if m.cursor < len(m.plan.Resources)-1 {
+			m.cursor++
+			m.updateViewportContent()
+			m.ensureCursorVisible()
+		}
+
+	case "enter", " ":
+		m.expanded[m.cursor] = !m.expanded[m.cursor]
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+
+	case "e":
+		m.expandAll()
+
+	case "c":
+		m.collapseAll()
+
+	case "/":
+		m.searching = true
+		m.searchInput.Focus()
+		return m, textinput.Blink
+
+	case "n":
+		m.nextMatch()
+
+	case "N":
+		m.prevMatch()
+
+	case "esc":
+		m.clearSearch()
+
+	case "backspace", "h", "left":
+		m.expanded[m.cursor] = false
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+
+	case "d", "ctrl+d":
+		m.scrollHalfPageDown()
+
+	case "u", "ctrl+u":
+		m.scrollHalfPageUp()
+
+	case "g":
+		m.handleGKey()
+
+	case "G":
+		m.gotoBottom()
+
+	case "pgup":
+		m.viewport.GotoTop()
+		m.viewport.SetYOffset(m.viewport.YOffset - m.viewport.Height)
+
+	case "pgdown":
+		m.viewport.SetYOffset(m.viewport.YOffset + m.viewport.Height)
+
+	case "l", "right":
+		m.expanded[m.cursor] = true
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+	}
+
+	return m, nil
+}
+
+// expandAll expands all resources
+func (m *Model) expandAll() {
+	for i := range m.plan.Resources {
+		m.expanded[i] = true
+	}
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+}
+
+// collapseAll collapses all resources
+func (m *Model) collapseAll() {
+	for i := range m.plan.Resources {
+		m.expanded[i] = false
+	}
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+}
+
+// nextMatch moves to the next search match
+func (m *Model) nextMatch() {
+	if len(m.searchMatches) > 0 {
+		m.currentMatch = (m.currentMatch + 1) % len(m.searchMatches)
+		m.cursor = m.searchMatches[m.currentMatch]
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+	}
+}
+
+// prevMatch moves to the previous search match
+func (m *Model) prevMatch() {
+	if len(m.searchMatches) > 0 {
+		m.currentMatch--
+		if m.currentMatch < 0 {
+			m.currentMatch = len(m.searchMatches) - 1
+		}
+		m.cursor = m.searchMatches[m.currentMatch]
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+	}
+}
+
+// clearSearch clears the current search
+func (m *Model) clearSearch() {
+	m.searchQuery = ""
+	m.searchMatches = []int{}
+	m.searchInput.SetValue("")
+	m.updateViewportContent()
+}
+
+// scrollHalfPageDown scrolls viewport half page down
+func (m *Model) scrollHalfPageDown() {
+	halfPage := m.viewport.Height / 2
+	m.viewport.SetYOffset(m.viewport.YOffset + halfPage)
+}
+
+// scrollHalfPageUp scrolls viewport half page up
+func (m *Model) scrollHalfPageUp() {
+	halfPage := m.viewport.Height / 2
+	newOffset := m.viewport.YOffset - halfPage
+	if newOffset < 0 {
+		newOffset = 0
+	}
+	m.viewport.SetYOffset(newOffset)
+}
+
+// handleGKey handles the g key for gg navigation
+func (m *Model) handleGKey() {
+	if m.pendingG {
+		m.cursor = 0
+		m.updateViewportContent()
+		m.viewport.GotoTop()
+		m.pendingG = false
+	} else {
+		m.pendingG = true
+	}
+}
+
+// gotoBottom moves cursor to the last resource
+func (m *Model) gotoBottom() {
+	m.cursor = len(m.plan.Resources) - 1
+	m.updateViewportContent()
+	m.viewport.GotoBottom()
+	m.pendingG = false
 }
 
 func (m *Model) performSearch() {
@@ -340,7 +375,7 @@ func (m Model) renderResources() string {
 }
 
 // renderSelectedResourceLine renders a resource line with full-width background highlight
-func (m Model) renderSelectedResourceLine(r parser.Resource, expanded bool, isMatch bool) string {
+func (m Model) renderSelectedResourceLine(r parser.Resource, expanded bool, _ bool) string {
 	// Build the line content
 	var content strings.Builder
 
