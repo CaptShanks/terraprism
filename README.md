@@ -16,10 +16,23 @@ A beautiful terminal UI for interactively viewing Terraform and OpenTofu plans w
 
 ## Installation
 
+### Quick Install (Recommended)
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/CaptShanks/terraprism/main/install.sh | sh
+```
+
 ### Using Go
 
 ```bash
 go install github.com/CaptShanks/terraprism/cmd/terraprism@latest
+```
+
+### Homebrew
+
+```bash
+brew tap CaptShanks/tap
+brew install terraprism
 ```
 
 ### From Source
@@ -30,11 +43,9 @@ cd terraprism
 make build
 ```
 
-### Homebrew (coming soon)
+### Manual Download
 
-```bash
-brew install terraprism
-```
+Download binaries from the [Releases](https://github.com/CaptShanks/terraprism/releases) page.
 
 ## Usage
 
