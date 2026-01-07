@@ -8,9 +8,25 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/ansi"
 
 	"github.com/tfplanview/tfplanview/internal/parser"
 )
+
+// padToWidth pads a string with spaces to reach the target width
+// Accounts for ANSI escape codes when calculating visible width
+func padToWidth(s string, targetWidth int) string {
+	if targetWidth <= 0 {
+		return s
+	}
+	// Get visible width (excluding ANSI codes)
+	visibleWidth := ansi.PrintableRuneWidth(s)
+	if visibleWidth >= targetWidth {
+		return s
+	}
+	padding := targetWidth - visibleWidth
+	return s + strings.Repeat(" ", padding)
+}
 
 // Model represents the TUI state
 type Model struct {
@@ -268,6 +284,8 @@ func (m Model) renderResources() string {
 		line := m.renderResourceLine(r, isExpanded, isMatch)
 		
 		if isSelected {
+			// Pad line to full width for complete highlight
+			line = padToWidth(line, m.width-4)
 			line = selectedStyle.Render(line)
 		}
 		
