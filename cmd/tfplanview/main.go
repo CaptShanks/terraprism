@@ -15,25 +15,36 @@ import (
 
 const version = "0.1.0"
 
+var printMode = false
+
 func main() {
 	// Check for help/version flags
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
+	args := os.Args[1:]
+	var inputFile string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
 		case "-h", "--help":
 			printUsage()
 			os.Exit(0)
 		case "-v", "--version":
 			fmt.Printf("tfplanview %s\n", version)
 			os.Exit(0)
+		case "-p", "--print":
+			printMode = true
+		default:
+			if !strings.HasPrefix(args[i], "-") {
+				inputFile = args[i]
+			}
 		}
 	}
 
 	// Read from stdin or file
 	var input io.Reader
-	
-	if len(os.Args) > 1 && os.Args[1] != "-" {
+
+	if inputFile != "" && inputFile != "-" {
 		// Read from file
-		file, err := os.Open(os.Args[1])
+		file, err := os.Open(inputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening file: %v\n", err)
 			os.Exit(1)
@@ -57,18 +68,18 @@ func main() {
 	// Increase buffer size for large plans
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
-	
+
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 		os.Exit(1)
 	}
 
 	planText := strings.Join(lines, "\n")
-	
+
 	// Parse the plan
 	plan, err := parser.Parse(planText)
 	if err != nil {
@@ -78,6 +89,12 @@ func main() {
 
 	if len(plan.Resources) == 0 {
 		fmt.Println("No resource changes detected in the plan.")
+		os.Exit(0)
+	}
+
+	// Print mode - just output colored text without TUI
+	if printMode {
+		tui.PrintPlan(plan)
 		os.Exit(0)
 	}
 
@@ -101,6 +118,7 @@ USAGE:
     terraform plan | tfplanview
     tofu plan | tfplanview
     tfplanview <plan-file>
+    tfplanview -p <plan-file>    # Print mode (no TUI)
 
 DESCRIPTION:
     tfplanview provides an interactive terminal UI for viewing Terraform and
@@ -121,6 +139,7 @@ CONTROLS:
 OPTIONS:
     -h, --help      Show this help message
     -v, --version   Show version
+    -p, --print     Print colored output without interactive TUI
 
 EXAMPLES:
     # Pipe from terraform
@@ -132,6 +151,8 @@ EXAMPLES:
     # Read from file
     terraform plan -no-color -out=plan.txt && tfplanview plan.txt
 
+    # Print mode (for piping or non-interactive use)
+    terraform plan -no-color | tfplanview -p
+
 `, version)
 }
-
