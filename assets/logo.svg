@@ -1,62 +1,46 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 140">
   <defs>
-    <!-- Gradient for the prism -->
     <linearGradient id="prismGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1e66f5;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#8839ef;stop-opacity:1" />
+      <stop offset="0%" stop-color="#1e66f5"/>
+      <stop offset="100%" stop-color="#8839ef"/>
     </linearGradient>
-    
-    <!-- Glow effect -->
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
   
-  <!-- Transparent Background -->
-  <rect width="500" height="140" fill="none"/>
+  <!-- Light Background -->
+  <rect width="500" height="140" fill="#eff1f5" rx="10"/>
   
-  <!-- Terraform-style Logo (simplified T shape) -->
+  <!-- Terraform-style Logo -->
   <g transform="translate(25, 30)">
-    <!-- TF Logo inspired shape - purple like Terraform -->
     <polygon points="0,0 25,15 25,55 0,40" fill="#844fba" opacity="0.9"/>
     <polygon points="30,18 55,33 55,73 30,58" fill="#844fba" opacity="0.7"/>
-    <polygon points="30,0 55,15 55,15 30,0" fill="#844fba" opacity="0.5"/>
     <polygon points="30,0 55,15 55,55 30,40" fill="#5c4ee5" opacity="0.9"/>
   </g>
   
-  <!-- Arrow/beam going into prism -->
-  <line x1="95" y1="70" x2="130" y2="70" stroke="#4c4f69" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
-  <polygon points="125,65 135,70 125,75" fill="#4c4f69" opacity="0.8"/>
+  <!-- Arrow going into prism -->
+  <line x1="95" y1="70" x2="125" y2="70" stroke="#4c4f69" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+  <polygon points="120,65 132,70 120,75" fill="#4c4f69" opacity="0.8"/>
   
-  <!-- The Prism (triangle) -->
-  <polygon points="160,25 200,115 120,115" fill="url(#prismGradient)" filter="url(#glow)" opacity="0.95"/>
+  <!-- The Prism -->
+  <polygon points="160,25 200,115 120,115" fill="url(#prismGradient)" opacity="0.95"/>
   <polygon points="160,25 200,115 120,115" fill="none" stroke="#4c4f69" stroke-width="1" opacity="0.4"/>
   
-  <!-- Rainbow rays coming out of prism -->
-  <line x1="185" y1="55" x2="230" y2="30" stroke="#40a02b" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
-  <line x1="190" y1="70" x2="235" y2="55" stroke="#179299" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
-  <line x1="193" y1="82" x2="238" y2="77" stroke="#df8e1d" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
-  <line x1="195" y1="93" x2="240" y2="98" stroke="#fe640b" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
-  <line x1="197" y1="103" x2="240" y2="118" stroke="#d20f39" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+  <!-- Rainbow rays -->
+  <line x1="185" y1="55" x2="235" y2="28" stroke="#40a02b" stroke-width="5" stroke-linecap="round"/>
+  <line x1="190" y1="70" x2="240" y2="52" stroke="#179299" stroke-width="5" stroke-linecap="round"/>
+  <line x1="193" y1="82" x2="243" y2="76" stroke="#df8e1d" stroke-width="5" stroke-linecap="round"/>
+  <line x1="195" y1="93" x2="245" y2="100" stroke="#fe640b" stroke-width="5" stroke-linecap="round"/>
+  <line x1="197" y1="103" x2="245" y2="122" stroke="#d20f39" stroke-width="5" stroke-linecap="round"/>
   
-  <!-- Text: TERRA-PRISM -->
-  <text x="260" y="62" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="700" fill="#4c4f69">
-    TERRA
-  </text>
-  <text x="260" y="95" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="300" fill="#6c6f85">
-    PRISM
-  </text>
+  <!-- Text: TERRA -->
+  <text x="265" y="65" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#4c4f69">TERRA</text>
   
-  <!-- Action symbols legend -->
-  <g transform="translate(370, 35)" font-family="monospace" font-size="11">
-    <text x="0" y="0" fill="#40a02b">+ create</text>
-    <text x="0" y="18" fill="#df8e1d">~ update</text>
-    <text x="0" y="36" fill="#d20f39">- destroy</text>
-    <text x="0" y="54" fill="#8839ef">± replace</text>
-    <text x="0" y="72" fill="#209fb5">≤ read</text>
-  </g>
+  <!-- Text: PRISM -->
+  <text x="265" y="100" font-family="Arial, sans-serif" font-size="32" font-weight="300" fill="#6c6f85">PRISM</text>
+  
+  <!-- Action legend -->
+  <text x="385" y="40" font-family="Courier, monospace" font-size="11" fill="#40a02b">+ create</text>
+  <text x="385" y="56" font-family="Courier, monospace" font-size="11" fill="#df8e1d">~ update</text>
+  <text x="385" y="72" font-family="Courier, monospace" font-size="11" fill="#d20f39">- destroy</text>
+  <text x="385" y="88" font-family="Courier, monospace" font-size="11" fill="#8839ef">± replace</text>
+  <text x="385" y="104" font-family="Courier, monospace" font-size="11" fill="#209fb5">≤ read</text>
 </svg>
