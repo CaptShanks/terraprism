@@ -4,22 +4,22 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Theme colors - using a vibrant but readable palette
+// Theme colors - Soft, low-contrast palette inspired by Tokyo Night / Catppuccin
 var (
-	// Primary colors for actions
-	createColor  = lipgloss.Color("#50fa7b") // Green
-	destroyColor = lipgloss.Color("#ff5555") // Red
-	updateColor  = lipgloss.Color("#f1fa8c") // Yellow
-	replaceColor = lipgloss.Color("#ff79c6") // Pink/Magenta
-	readColor    = lipgloss.Color("#8be9fd") // Cyan
-	
+	// Primary colors for actions (muted, pastel tones)
+	createColor  = lipgloss.Color("#9ece6a") // Soft sage green
+	destroyColor = lipgloss.Color("#f7768e") // Soft coral red
+	updateColor  = lipgloss.Color("#e0af68") // Warm amber
+	replaceColor = lipgloss.Color("#bb9af7") // Soft lavender
+	readColor    = lipgloss.Color("#7dcfff") // Soft sky blue
+
 	// UI colors
-	selectedBg    = lipgloss.Color("#44475a") // Dark purple-gray
-	headerColor   = lipgloss.Color("#bd93f9") // Purple
-	borderColor   = lipgloss.Color("#6272a4") // Muted purple
-	mutedColorVal = lipgloss.Color("#6272a4") // Muted text
-	textColor     = lipgloss.Color("#f8f8f2") // Light text
-	computedColor = lipgloss.Color("#8be9fd") // Cyan for computed values
+	selectedBg    = lipgloss.Color("#292e42") // Deep navy selection
+	headerColor   = lipgloss.Color("#7aa2f7") // Soft periwinkle
+	borderColor   = lipgloss.Color("#3b4261") // Muted slate
+	mutedColorVal = lipgloss.Color("#565f89") // Soft gray-blue
+	textColor     = lipgloss.Color("#a9b1d6") // Soft lavender gray
+	computedColor = lipgloss.Color("#73daca") // Soft teal
 )
 
 // Styles
@@ -114,8 +114,8 @@ var (
 
 	// Match highlight
 	matchStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#44475a")).
-		Foreground(lipgloss.Color("#50fa7b")).
+		Background(lipgloss.Color("#3b4261")).
+		Foreground(lipgloss.Color("#9ece6a")).
 		Bold(true)
 
 	// Border style for sections
@@ -127,7 +127,7 @@ var (
 	// Status bar
 	statusBarStyle = lipgloss.NewStyle().
 		Foreground(mutedColorVal).
-		Background(lipgloss.Color("#282a36")).
+		Background(lipgloss.Color("#1a1b26")).
 		Padding(0, 1)
 )
 
