@@ -4,23 +4,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Theme colors - Nightfox Deep palette
-// Based on Nightfox with deeper, richer saturation
+// Theme colors - Catppuccin Mocha palette
+// Matching user's starship terminal colors
 var (
-	// Primary colors for actions (deep, rich tones)
-	createColor  = lipgloss.Color("#4fd6be") // Deep teal green
-	destroyColor = lipgloss.Color("#e05f75") // Deep coral red
-	updateColor  = lipgloss.Color("#ffc777") // Deep golden amber
-	replaceColor = lipgloss.Color("#c099ff") // Deep violet
-	readColor    = lipgloss.Color("#50c4fa") // Deep sky blue
+	// Primary colors for actions
+	createColor  = lipgloss.Color("#a6e3a1") // green
+	destroyColor = lipgloss.Color("#f38ba8") // red
+	updateColor  = lipgloss.Color("#f9e2af") // yellow
+	replaceColor = lipgloss.Color("#cba6f7") // mauve
+	readColor    = lipgloss.Color("#74c7ec") // sapphire
 
 	// UI colors
-	selectedBg    = lipgloss.Color("#1e2a3a") // Deep navy selection
-	headerColor   = lipgloss.Color("#82aaff") // Deep periwinkle
-	borderColor   = lipgloss.Color("#3b5070") // Deep slate
-	mutedColorVal = lipgloss.Color("#7a88a0") // Deep gray
-	textColor     = lipgloss.Color("#c8d3f5") // Soft lavender white
-	computedColor = lipgloss.Color("#4fd6be") // Deep teal
+	selectedBg    = lipgloss.Color("#45475a") // surface1
+	headerColor   = lipgloss.Color("#89b4fa") // blue
+	borderColor   = lipgloss.Color("#313244") // surface0
+	mutedColorVal = lipgloss.Color("#7f849c") // overlay1
+	textColor     = lipgloss.Color("#cdd6f4") // text
+	computedColor = lipgloss.Color("#94e2d5") // teal
 )
 
 // Styles
@@ -115,8 +115,8 @@ var (
 
 	// Match highlight
 	matchStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#1e2a3a")).
-		Foreground(lipgloss.Color("#4fd6be")).
+		Background(lipgloss.Color("#45475a")). // surface1
+		Foreground(lipgloss.Color("#a6e3a1")). // green
 		Bold(true)
 
 	// Border style for sections
@@ -128,7 +128,7 @@ var (
 	// Status bar
 	statusBarStyle = lipgloss.NewStyle().
 		Foreground(mutedColorVal).
-		Background(lipgloss.Color("#131a24")).
+		Background(lipgloss.Color("#181825")). // mantle
 		Padding(0, 1)
 )
 
