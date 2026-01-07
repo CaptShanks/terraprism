@@ -154,11 +154,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searchInput.SetValue("")
 				m.updateViewportContent()
 
+			case "backspace":
+				// Collapse current resource
+				m.expanded[m.cursor] = false
+				m.updateViewportContent()
+
+			case "d", "ctrl+d":
+				// Half page down (vim style)
+				halfPage := m.viewport.Height / 2
+				m.viewport.LineDown(halfPage)
+
+			case "u", "ctrl+u":
+				// Half page up (vim style)
+				halfPage := m.viewport.Height / 2
+				m.viewport.LineUp(halfPage)
+
+			case "g":
+				// Go to top
+				m.cursor = 0
+				m.viewport.GotoTop()
+				m.updateViewportContent()
+
+			case "G":
+				// Go to bottom
+				m.cursor = len(m.plan.Resources) - 1
+				m.viewport.GotoBottom()
+				m.updateViewportContent()
+
 			case "pgup":
 				m.viewport.ViewUp()
 
 			case "pgdown":
 				m.viewport.ViewDown()
+
+			case "l", "right":
+				// Expand current (like navigating into)
+				m.expanded[m.cursor] = true
+				m.updateViewportContent()
+
+			case "h", "left":
+				// Collapse current (like navigating out)
+				m.expanded[m.cursor] = false
+				m.updateViewportContent()
 			}
 		}
 
@@ -519,7 +556,7 @@ func (m Model) View() string {
 	b.WriteString("\n")
 
 	// Help footer
-	help := "↑/↓: navigate • Enter/Space: expand/collapse • e: expand all • c: collapse all • /: search • q: quit"
+	help := "↑↓/jk: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • g/G: top/bottom • /: search • q: quit"
 	b.WriteString(helpStyle.Render(help))
 
 	return appStyle.Render(b.String())
