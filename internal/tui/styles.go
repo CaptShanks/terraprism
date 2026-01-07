@@ -14,7 +14,6 @@ var (
 	readColor     lipgloss.Color
 	selectedBg    lipgloss.Color
 	headerColor   lipgloss.Color
-	borderColor   lipgloss.Color
 	mutedColorVal lipgloss.Color
 	textColor     lipgloss.Color
 	computedColor lipgloss.Color
@@ -85,7 +84,6 @@ func SetDarkPalette() {
 	readColor = lipgloss.Color(darkPalette["sapphire"])
 	selectedBg = lipgloss.Color(darkPalette["surface1"])
 	headerColor = lipgloss.Color(darkPalette["blue"])
-	borderColor = lipgloss.Color(darkPalette["surface0"])
 	mutedColorVal = lipgloss.Color(darkPalette["overlay"])
 	textColor = lipgloss.Color(darkPalette["text"])
 	computedColor = lipgloss.Color(darkPalette["teal"])
@@ -101,7 +99,6 @@ func SetLightPalette() {
 	readColor = lipgloss.Color(lightPalette["sapphire"])
 	selectedBg = lipgloss.Color(lightPalette["surface1"])
 	headerColor = lipgloss.Color(lightPalette["blue"])
-	borderColor = lipgloss.Color(lightPalette["surface0"])
 	mutedColorVal = lipgloss.Color(lightPalette["overlay"])
 	textColor = lipgloss.Color(lightPalette["text"])
 	computedColor = lipgloss.Color(lightPalette["teal"])

@@ -176,16 +176,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "d", "ctrl+d":
 				// Half page down (vim style)
 				halfPage := m.viewport.Height / 2
-				for i := 0; i < halfPage; i++ {
-					m.viewport.LineDown(1)
-				}
+				m.viewport.SetYOffset(m.viewport.YOffset + halfPage)
 
 			case "u", "ctrl+u":
 				// Half page up (vim style)
 				halfPage := m.viewport.Height / 2
-				for i := 0; i < halfPage; i++ {
-					m.viewport.LineUp(1)
+				newOffset := m.viewport.YOffset - halfPage
+				if newOffset < 0 {
+					newOffset = 0
 				}
+				m.viewport.SetYOffset(newOffset)
 
 			case "g":
 				if m.pendingG {
