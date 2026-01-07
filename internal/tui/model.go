@@ -120,17 +120,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor > 0 {
 					m.cursor--
 					m.updateViewportContent()
+					m.ensureCursorVisible()
 				}
 
 			case "down", "j":
 				if m.cursor < len(m.plan.Resources)-1 {
 					m.cursor++
 					m.updateViewportContent()
+					m.ensureCursorVisible()
 				}
 
 			case "enter", " ":
 				m.expanded[m.cursor] = !m.expanded[m.cursor]
 				m.updateViewportContent()
+				m.ensureCursorVisible()
 
 			case "e":
 				// Expand all
@@ -138,6 +141,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.expanded[i] = true
 				}
 				m.updateViewportContent()
+				m.ensureCursorVisible()
 
 			case "c":
 				// Collapse all
@@ -145,6 +149,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.expanded[i] = false
 				}
 				m.updateViewportContent()
+				m.ensureCursorVisible()
 
 			case "/":
 				m.searching = true
@@ -157,6 +162,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.currentMatch = (m.currentMatch + 1) % len(m.searchMatches)
 					m.cursor = m.searchMatches[m.currentMatch]
 					m.updateViewportContent()
+					m.ensureCursorVisible()
 				}
 
 			case "N":
@@ -168,6 +174,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.cursor = m.searchMatches[m.currentMatch]
 					m.updateViewportContent()
+					m.ensureCursorVisible()
 				}
 
 			case "esc":
@@ -180,6 +187,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Collapse current resource
 				m.expanded[m.cursor] = false
 				m.updateViewportContent()
+				m.ensureCursorVisible()
 
 			case "d", "ctrl+d":
 				// Half page down (vim style)
@@ -195,8 +203,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.pendingG {
 					// gg - Go to top
 					m.cursor = 0
-					m.viewport.GotoTop()
 					m.updateViewportContent()
+					m.viewport.GotoTop()
 					m.pendingG = false
 				} else {
 					// First g pressed, wait for second
@@ -206,8 +214,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "G":
 				// Go to bottom
 				m.cursor = len(m.plan.Resources) - 1
-				m.viewport.GotoBottom()
 				m.updateViewportContent()
+				m.viewport.GotoBottom()
 				m.pendingG = false
 
 			case "pgup":
@@ -220,11 +228,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Expand current (like navigating into)
 				m.expanded[m.cursor] = true
 				m.updateViewportContent()
+				m.ensureCursorVisible()
 
 			case "h", "left":
 				// Collapse current (like navigating out)
 				m.expanded[m.cursor] = false
 				m.updateViewportContent()
+				m.ensureCursorVisible()
 			}
 		}
 
@@ -263,6 +273,41 @@ func (m *Model) updateViewportContent() {
 		return
 	}
 	m.viewport.SetContent(m.renderResources())
+}
+
+// ensureCursorVisible scrolls the viewport to make the current cursor visible
+func (m *Model) ensureCursorVisible() {
+	if !m.ready {
+		return
+	}
+
+	// Calculate the line number where the current resource starts
+	lineNum := 0
+	for i := 0; i < m.cursor; i++ {
+		lineNum++ // Resource header line
+		if m.expanded[i] {
+			// Add the content lines for expanded resources
+			lineNum += len(m.plan.Resources[i].RawLines) // includes header + content
+			lineNum++ // blank line after expanded resource
+		}
+	}
+
+	// Get current viewport position
+	topLine := m.viewport.YOffset
+	bottomLine := topLine + m.viewport.Height - 1
+
+	// Scroll if cursor is outside visible area
+	if lineNum < topLine {
+		// Cursor is above visible area - scroll up
+		m.viewport.SetYOffset(lineNum)
+	} else if lineNum > bottomLine {
+		// Cursor is below visible area - scroll down
+		newOffset := lineNum - m.viewport.Height + 1
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		m.viewport.SetYOffset(newOffset)
+	}
 }
 
 func (m Model) renderResources() string {
