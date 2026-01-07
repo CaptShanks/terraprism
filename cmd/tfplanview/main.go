@@ -148,7 +148,7 @@ CONTROLS:
     h/←/⌫       Collapse current resource
     d/Ctrl+D    Half page down (scroll within expanded resource)
     u/Ctrl+U    Half page up
-    g           Go to first resource
+    gg          Go to first resource
     G           Go to last resource
     e           Expand all resources
     c           Collapse all resources

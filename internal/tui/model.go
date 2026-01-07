@@ -26,6 +26,7 @@ type Model struct {
 	searchQuery    string
 	searchMatches  []int
 	currentMatch   int
+	pendingG       bool // Track if 'g' was pressed, waiting for second 'g'
 }
 
 // NewModel creates a new TUI model
@@ -90,6 +91,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		} else {
+			// Reset pending g if any other key is pressed (except g itself)
+			if msg.String() != "g" && msg.String() != "G" {
+				m.pendingG = false
+			}
+
 			switch msg.String() {
 			case "q", "ctrl+c":
 				return m, tea.Quit
@@ -170,16 +176,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.LineUp(halfPage)
 
 			case "g":
-				// Go to top
-				m.cursor = 0
-				m.viewport.GotoTop()
-				m.updateViewportContent()
+				if m.pendingG {
+					// gg - Go to top
+					m.cursor = 0
+					m.viewport.GotoTop()
+					m.updateViewportContent()
+					m.pendingG = false
+				} else {
+					// First g pressed, wait for second
+					m.pendingG = true
+				}
 
 			case "G":
 				// Go to bottom
 				m.cursor = len(m.plan.Resources) - 1
 				m.viewport.GotoBottom()
 				m.updateViewportContent()
+				m.pendingG = false
 
 			case "pgup":
 				m.viewport.ViewUp()
@@ -556,7 +569,7 @@ func (m Model) View() string {
 	b.WriteString("\n")
 
 	// Help footer
-	help := "↑↓/jk: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • g/G: top/bottom • /: search • q: quit"
+	help := "j/k: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • q: quit"
 	b.WriteString(helpStyle.Render(help))
 
 	return appStyle.Render(b.String())
