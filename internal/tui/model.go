@@ -224,21 +224,12 @@ func (m Model) renderResources() string {
 		b.WriteString(line)
 		b.WriteString("\n")
 
-		// Render attributes if expanded
-		if isExpanded {
-			for _, attr := range r.Attributes {
-				attrLine := m.renderAttributeLine(attr, r.Action)
-				b.WriteString(attrLine)
+		// Render full HCL block if expanded
+		if isExpanded && len(r.RawLines) > 1 {
+			for _, line := range r.RawLines[1:] {
+				coloredLine := m.colorizeHCLLine(line, r.Action)
+				b.WriteString(coloredLine)
 				b.WriteString("\n")
-			}
-			
-			// Show raw lines if no parsed attributes
-			if len(r.Attributes) == 0 && len(r.RawLines) > 1 {
-				for _, raw := range r.RawLines[1:] {
-					b.WriteString("    ")
-					b.WriteString(mutedColor.Render(raw))
-					b.WriteString("\n")
-				}
 			}
 			b.WriteString("\n")
 		}
@@ -278,12 +269,118 @@ func (m Model) renderResourceLine(r parser.Resource, expanded bool, isMatch bool
 	b.WriteString(" ")
 	b.WriteString(mutedColor.Render(actionDesc))
 
-	// Attribute count
-	if len(r.Attributes) > 0 {
-		b.WriteString(mutedColor.Render(fmt.Sprintf(" (%d attrs)", len(r.Attributes))))
+	// Line count for expanded content
+	if len(r.RawLines) > 1 {
+		b.WriteString(mutedColor.Render(fmt.Sprintf(" (%d lines)", len(r.RawLines)-1)))
 	}
 
 	return b.String()
+}
+
+// colorizeHCLLine applies syntax highlighting to a line of HCL in the TUI
+func (m Model) colorizeHCLLine(line string, action parser.Action) string {
+	trimmed := strings.TrimLeft(line, " \t")
+	indent := line[:len(line)-len(trimmed)]
+
+	// Check for change symbols at start of content
+	var prefix string
+	var content string
+
+	if strings.HasPrefix(trimmed, "+ ") {
+		prefix = createSymbol
+		content = trimmed[2:]
+	} else if strings.HasPrefix(trimmed, "- ") {
+		prefix = destroySymbol
+		content = trimmed[2:]
+	} else if strings.HasPrefix(trimmed, "~ ") {
+		prefix = updateSymbol
+		content = trimmed[2:]
+	} else {
+		prefix = " "
+		content = trimmed
+	}
+
+	// Apply syntax highlighting
+	coloredContent := m.colorizeHCLContent(content, action)
+
+	return indent + prefix + " " + coloredContent
+}
+
+// colorizeHCLContent applies HCL syntax highlighting to content
+func (m Model) colorizeHCLContent(content string, action parser.Action) string {
+	// Empty or structural lines
+	if content == "" || content == "{" || content == "}" || content == "]" || content == "[" {
+		return mutedColor.Render(content)
+	}
+
+	// Check for key = value pattern
+	if idx := strings.Index(content, " = "); idx > 0 {
+		key := content[:idx]
+		value := content[idx+3:]
+		return attrNameStyle.Render(key) + " = " + m.colorizeValue(value, action)
+	}
+
+	// Nested block headers (e.g., "root_block_device {")
+	if strings.HasSuffix(content, " {") {
+		blockName := strings.TrimSuffix(content, " {")
+		return lipgloss.NewStyle().Foreground(headerColor).Render(blockName) + " {"
+	}
+
+	// Resource declarations
+	if strings.HasPrefix(content, "resource ") || strings.HasPrefix(content, "data ") {
+		return lipgloss.NewStyle().Foreground(replaceColor).Bold(true).Render(content)
+	}
+
+	// Default
+	return attrNameStyle.Render(content)
+}
+
+// colorizeValue applies coloring to a value based on its type
+func (m Model) colorizeValue(value string, action parser.Action) string {
+	value = strings.TrimSpace(value)
+
+	// (known after apply)
+	if strings.Contains(value, "(known after apply)") {
+		return attrComputedStyle.Render(value)
+	}
+
+	// (sensitive value)
+	if strings.Contains(value, "(sensitive") {
+		return lipgloss.NewStyle().Foreground(replaceColor).Italic(true).Render(value)
+	}
+
+	// Change arrow: old -> new
+	if strings.Contains(value, " -> ") {
+		parts := strings.SplitN(value, " -> ", 2)
+		oldVal := strings.TrimSpace(parts[0])
+		newVal := strings.TrimSpace(parts[1])
+		return attrOldValueStyle.Render(oldVal) + " → " + attrNewValueStyle.Render(newVal)
+	}
+
+	// null
+	if value == "null" {
+		return lipgloss.NewStyle().Foreground(destroyColor).Render(value)
+	}
+
+	// boolean
+	if value == "true" || value == "false" {
+		return lipgloss.NewStyle().Foreground(readColor).Render(value)
+	}
+
+	// Structural
+	if value == "{" || value == "[" || strings.HasSuffix(value, "{") || strings.HasSuffix(value, "[") {
+		return mutedColor.Render(value)
+	}
+
+	// Default based on action
+	switch action {
+	case parser.ActionCreate:
+		return attrNewValueStyle.Render(value)
+	case parser.ActionDestroy:
+		return attrOldValueStyle.Render(value)
+	default:
+		return lipgloss.NewStyle().Foreground(textColor).Render(value)
+	}
 }
 
 func (m Model) renderAttributeLine(attr parser.Attribute, parentAction parser.Action) string {
