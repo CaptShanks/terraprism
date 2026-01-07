@@ -1,0 +1,430 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/tfplanview/tfplanview/internal/parser"
+)
+
+// Model represents the TUI state
+type Model struct {
+	plan           *parser.Plan
+	cursor         int
+	expanded       map[int]bool
+	viewport       viewport.Model
+	ready          bool
+	width          int
+	height         int
+	searching      bool
+	searchInput    textinput.Model
+	searchQuery    string
+	searchMatches  []int
+	currentMatch   int
+}
+
+// NewModel creates a new TUI model
+func NewModel(plan *parser.Plan) Model {
+	ti := textinput.New()
+	ti.Placeholder = "Search..."
+	ti.CharLimit = 100
+	ti.Width = 40
+
+	return Model{
+		plan:     plan,
+		expanded: make(map[int]bool),
+		searchInput: ti,
+		searchMatches: []int{},
+	}
+}
+
+// Init initializes the model
+func (m Model) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles messages
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		headerHeight := 4 // Title + summary + blank line
+		footerHeight := 3 // Help text
+		
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width-4, msg.Height-headerHeight-footerHeight)
+			m.viewport.YPosition = headerHeight
+			m.ready = true
+		} else {
+			m.viewport.Width = msg.Width - 4
+			m.viewport.Height = msg.Height - headerHeight - footerHeight
+		}
+		m.updateViewportContent()
+
+	case tea.KeyMsg:
+		if m.searching {
+			switch msg.String() {
+			case "enter":
+				m.searching = false
+				m.searchQuery = m.searchInput.Value()
+				m.performSearch()
+				m.updateViewportContent()
+			case "esc":
+				m.searching = false
+				m.searchInput.SetValue("")
+				m.searchQuery = ""
+				m.searchMatches = []int{}
+				m.updateViewportContent()
+			default:
+				m.searchInput, cmd = m.searchInput.Update(msg)
+				cmds = append(cmds, cmd)
+			}
+		} else {
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+					m.updateViewportContent()
+				}
+
+			case "down", "j":
+				if m.cursor < len(m.plan.Resources)-1 {
+					m.cursor++
+					m.updateViewportContent()
+				}
+
+			case "enter", " ":
+				m.expanded[m.cursor] = !m.expanded[m.cursor]
+				m.updateViewportContent()
+
+			case "e":
+				// Expand all
+				for i := range m.plan.Resources {
+					m.expanded[i] = true
+				}
+				m.updateViewportContent()
+
+			case "c":
+				// Collapse all
+				for i := range m.plan.Resources {
+					m.expanded[i] = false
+				}
+				m.updateViewportContent()
+
+			case "/":
+				m.searching = true
+				m.searchInput.Focus()
+				return m, textinput.Blink
+
+			case "n":
+				// Next match
+				if len(m.searchMatches) > 0 {
+					m.currentMatch = (m.currentMatch + 1) % len(m.searchMatches)
+					m.cursor = m.searchMatches[m.currentMatch]
+					m.updateViewportContent()
+				}
+
+			case "N":
+				// Previous match
+				if len(m.searchMatches) > 0 {
+					m.currentMatch--
+					if m.currentMatch < 0 {
+						m.currentMatch = len(m.searchMatches) - 1
+					}
+					m.cursor = m.searchMatches[m.currentMatch]
+					m.updateViewportContent()
+				}
+
+			case "esc":
+				m.searchQuery = ""
+				m.searchMatches = []int{}
+				m.searchInput.SetValue("")
+				m.updateViewportContent()
+
+			case "pgup":
+				m.viewport.ViewUp()
+
+			case "pgdown":
+				m.viewport.ViewDown()
+			}
+		}
+
+	case tea.MouseMsg:
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) performSearch() {
+	m.searchMatches = []int{}
+	m.currentMatch = 0
+	
+	if m.searchQuery == "" {
+		return
+	}
+
+	query := strings.ToLower(m.searchQuery)
+	for i, r := range m.plan.Resources {
+		if strings.Contains(strings.ToLower(r.Address), query) ||
+			strings.Contains(strings.ToLower(r.Type), query) ||
+			strings.Contains(strings.ToLower(r.Name), query) {
+			m.searchMatches = append(m.searchMatches, i)
+		}
+	}
+
+	if len(m.searchMatches) > 0 {
+		m.cursor = m.searchMatches[0]
+	}
+}
+
+func (m *Model) updateViewportContent() {
+	if !m.ready {
+		return
+	}
+	m.viewport.SetContent(m.renderResources())
+}
+
+func (m Model) renderResources() string {
+	var b strings.Builder
+
+	for i, r := range m.plan.Resources {
+		isSelected := i == m.cursor
+		isExpanded := m.expanded[i]
+		isMatch := false
+		
+		for _, match := range m.searchMatches {
+			if match == i {
+				isMatch = true
+				break
+			}
+		}
+
+		// Render resource line
+		line := m.renderResourceLine(r, isExpanded, isMatch)
+		
+		if isSelected {
+			line = selectedStyle.Render(line)
+		}
+		
+		b.WriteString(line)
+		b.WriteString("\n")
+
+		// Render attributes if expanded
+		if isExpanded {
+			for _, attr := range r.Attributes {
+				attrLine := m.renderAttributeLine(attr, r.Action)
+				b.WriteString(attrLine)
+				b.WriteString("\n")
+			}
+			
+			// Show raw lines if no parsed attributes
+			if len(r.Attributes) == 0 && len(r.RawLines) > 1 {
+				for _, raw := range r.RawLines[1:] {
+					b.WriteString("    ")
+					b.WriteString(mutedColor.Render(raw))
+					b.WriteString("\n")
+				}
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	return b.String()
+}
+
+func (m Model) renderResourceLine(r parser.Resource, expanded bool, isMatch bool) string {
+	var b strings.Builder
+
+	// Expand/collapse indicator
+	if expanded {
+		b.WriteString(expandedIndicator)
+	} else {
+		b.WriteString(collapsedIndicator)
+	}
+	b.WriteString(" ")
+
+	// Action symbol
+	b.WriteString(GetActionSymbol(string(r.Action)))
+	b.WriteString(" ")
+
+	// Resource address
+	style := GetResourceStyle(string(r.Action))
+	address := r.Address
+	
+	if isMatch && m.searchQuery != "" {
+		// Highlight matching text
+		address = highlightMatch(address, m.searchQuery)
+	}
+	
+	b.WriteString(style.Render(address))
+
+	// Action description
+	actionDesc := getActionDescription(r.Action)
+	b.WriteString(" ")
+	b.WriteString(mutedColor.Render(actionDesc))
+
+	// Attribute count
+	if len(r.Attributes) > 0 {
+		b.WriteString(mutedColor.Render(fmt.Sprintf(" (%d attrs)", len(r.Attributes))))
+	}
+
+	return b.String()
+}
+
+func (m Model) renderAttributeLine(attr parser.Attribute, parentAction parser.Action) string {
+	var b strings.Builder
+	b.WriteString("    ")
+
+	// Attribute action symbol
+	switch attr.Action {
+	case parser.ActionCreate:
+		b.WriteString(createSymbol)
+	case parser.ActionDestroy:
+		b.WriteString(destroySymbol)
+	case parser.ActionUpdate:
+		b.WriteString(updateSymbol)
+	default:
+		b.WriteString(" ")
+	}
+	b.WriteString(" ")
+
+	// Attribute name
+	b.WriteString(attrNameStyle.Render(attr.Name))
+
+	if attr.OldValue != "" || attr.NewValue != "" {
+		b.WriteString(" = ")
+		
+		if attr.Computed {
+			b.WriteString(attrComputedStyle.Render("(known after apply)"))
+		} else if attr.OldValue != "" && attr.NewValue != "" {
+			// Show change: old -> new
+			b.WriteString(attrOldValueStyle.Render(truncateValue(attr.OldValue)))
+			b.WriteString(" → ")
+			b.WriteString(attrNewValueStyle.Render(truncateValue(attr.NewValue)))
+		} else if attr.NewValue != "" {
+			style := attrNewValueStyle
+			if attr.Action == parser.ActionDestroy {
+				style = attrOldValueStyle
+			}
+			b.WriteString(style.Render(truncateValue(attr.NewValue)))
+		} else if attr.OldValue != "" {
+			b.WriteString(attrOldValueStyle.Render(truncateValue(attr.OldValue)))
+		}
+	}
+
+	return b.String()
+}
+
+func highlightMatch(text, query string) string {
+	lower := strings.ToLower(text)
+	lowerQuery := strings.ToLower(query)
+	
+	idx := strings.Index(lower, lowerQuery)
+	if idx == -1 {
+		return text
+	}
+
+	before := text[:idx]
+	match := text[idx : idx+len(query)]
+	after := text[idx+len(query):]
+
+	return before + matchStyle.Render(match) + after
+}
+
+func getActionDescription(action parser.Action) string {
+	switch action {
+	case parser.ActionCreate:
+		return "will be created"
+	case parser.ActionDestroy:
+		return "will be destroyed"
+	case parser.ActionUpdate:
+		return "will be updated"
+	case parser.ActionReplace:
+		return "must be replaced"
+	case parser.ActionRead:
+		return "will be read"
+	case parser.ActionDeleteCreate:
+		return "will be destroyed and then created"
+	case parser.ActionCreateDelete:
+		return "will be created and then destroyed"
+	default:
+		return ""
+	}
+}
+
+func truncateValue(s string) string {
+	s = strings.TrimSpace(s)
+	// Remove surrounding quotes if present
+	if len(s) > 1 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+	
+	if len(s) > 60 {
+		return s[:57] + "..."
+	}
+	return s
+}
+
+// View renders the UI
+func (m Model) View() string {
+	if !m.ready {
+		return "Loading..."
+	}
+
+	var b strings.Builder
+
+	// Header
+	header := headerStyle.Render("📋 tfplanview - Terraform Plan Viewer")
+	b.WriteString(header)
+	b.WriteString("\n")
+
+	// Summary
+	if m.plan.Summary != "" {
+		summary := fmt.Sprintf("  %s to add, %s to change, %s to destroy",
+			lipgloss.NewStyle().Foreground(createColor).Render(fmt.Sprintf("%d", m.plan.TotalAdd)),
+			lipgloss.NewStyle().Foreground(updateColor).Render(fmt.Sprintf("%d", m.plan.TotalChange)),
+			lipgloss.NewStyle().Foreground(destroyColor).Render(fmt.Sprintf("%d", m.plan.TotalDestroy)),
+		)
+		b.WriteString(summaryStyle.Render(summary))
+	} else {
+		b.WriteString(summaryStyle.Render(fmt.Sprintf("  %d resources with changes", len(m.plan.Resources))))
+	}
+	b.WriteString("\n\n")
+
+	// Search bar (if active)
+	if m.searching {
+		b.WriteString(searchStyle.Render("Search: "))
+		b.WriteString(m.searchInput.View())
+		b.WriteString("\n\n")
+	} else if m.searchQuery != "" {
+		matchInfo := fmt.Sprintf("Search: %q (%d/%d matches)", m.searchQuery, m.currentMatch+1, len(m.searchMatches))
+		b.WriteString(searchStyle.Render(matchInfo))
+		b.WriteString("\n\n")
+	}
+
+	// Viewport with resources
+	b.WriteString(m.viewport.View())
+	b.WriteString("\n")
+
+	// Help footer
+	help := "↑/↓: navigate • Enter/Space: expand/collapse • e: expand all • c: collapse all • /: search • q: quit"
+	b.WriteString(helpStyle.Render(help))
+
+	return appStyle.Render(b.String())
+}
+
