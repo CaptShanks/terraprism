@@ -28,13 +28,6 @@ curl -sSfL https://raw.githubusercontent.com/CaptShanks/terraprism/main/install.
 go install github.com/CaptShanks/terraprism/cmd/terraprism@latest
 ```
 
-### Homebrew
-
-```bash
-brew tap CaptShanks/tap
-brew install terraprism
-```
-
 ### From Source
 
 ```bash
