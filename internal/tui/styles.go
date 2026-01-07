@@ -2,29 +2,149 @@ package tui
 
 import (
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
-// Theme colors - Catppuccin Mocha (Crisp)
-// Brighter, more vivid variants for better visibility
+// Color palette variables - will be set based on background detection
 var (
-	// Primary colors for actions (crisp, vivid tones)
-	createColor  = lipgloss.Color("#40d97f") // vivid green
-	destroyColor = lipgloss.Color("#ff6b8a") // vivid red
-	updateColor  = lipgloss.Color("#ffd866") // vivid yellow
-	replaceColor = lipgloss.Color("#d4a5ff") // vivid mauve
-	readColor    = lipgloss.Color("#5ccfe6") // vivid sapphire
-
-	// UI colors
-	selectedBg    = lipgloss.Color("#45475a") // surface1
-	headerColor   = lipgloss.Color("#7dcfff") // vivid blue
-	borderColor   = lipgloss.Color("#313244") // surface0
-	mutedColorVal = lipgloss.Color("#9399b2") // overlay2 (brighter)
-	textColor     = lipgloss.Color("#e4e8f7") // brighter text
-	computedColor = lipgloss.Color("#5de4c7") // vivid teal
+	createColor   lipgloss.Color
+	destroyColor  lipgloss.Color
+	updateColor   lipgloss.Color
+	replaceColor  lipgloss.Color
+	readColor     lipgloss.Color
+	selectedBg    lipgloss.Color
+	headerColor   lipgloss.Color
+	borderColor   lipgloss.Color
+	mutedColorVal lipgloss.Color
+	textColor     lipgloss.Color
+	computedColor lipgloss.Color
 )
 
-// Styles
+// Catppuccin Mocha (Dark) palette
+var darkPalette = map[string]string{
+	"green":    "#a6e3a1",
+	"red":      "#f38ba8",
+	"yellow":   "#f9e2af",
+	"mauve":    "#cba6f7",
+	"sapphire": "#74c7ec",
+	"blue":     "#89b4fa",
+	"teal":     "#94e2d5",
+	"text":     "#cdd6f4",
+	"subtext":  "#a6adc8",
+	"overlay":  "#7f849c",
+	"surface1": "#45475a",
+	"surface0": "#313244",
+	"mantle":   "#181825",
+	"base":     "#1e1e2e",
+}
+
+// Catppuccin Latte (Light) palette
+var lightPalette = map[string]string{
+	"green":    "#40a02b",
+	"red":      "#d20f39",
+	"yellow":   "#df8e1d",
+	"mauve":    "#8839ef",
+	"sapphire": "#209fb5",
+	"blue":     "#1e66f5",
+	"teal":     "#179299",
+	"text":     "#4c4f69",
+	"subtext":  "#6c6f85",
+	"overlay":  "#8c8fa1",
+	"surface1": "#bcc0cc",
+	"surface0": "#ccd0da",
+	"mantle":   "#e6e9ef",
+	"base":     "#eff1f5",
+}
+
+// IsLightBackground returns true if terminal has a light background
+func IsLightBackground() bool {
+	return !termenv.HasDarkBackground()
+}
+
+func init() {
+	// Initialize colors based on detected background
+	InitColors()
+}
+
+// InitColors sets the color palette based on terminal background
+func InitColors() {
+	if IsLightBackground() {
+		SetLightPalette()
+	} else {
+		SetDarkPalette()
+	}
+	initStyles()
+}
+
+// SetDarkPalette sets colors for dark backgrounds (Catppuccin Mocha)
+func SetDarkPalette() {
+	createColor = lipgloss.Color(darkPalette["green"])
+	destroyColor = lipgloss.Color(darkPalette["red"])
+	updateColor = lipgloss.Color(darkPalette["yellow"])
+	replaceColor = lipgloss.Color(darkPalette["mauve"])
+	readColor = lipgloss.Color(darkPalette["sapphire"])
+	selectedBg = lipgloss.Color(darkPalette["surface1"])
+	headerColor = lipgloss.Color(darkPalette["blue"])
+	borderColor = lipgloss.Color(darkPalette["surface0"])
+	mutedColorVal = lipgloss.Color(darkPalette["overlay"])
+	textColor = lipgloss.Color(darkPalette["text"])
+	computedColor = lipgloss.Color(darkPalette["teal"])
+	initStyles() // Reinitialize styles with new colors
+}
+
+// SetLightPalette sets colors for light backgrounds (Catppuccin Latte)
+func SetLightPalette() {
+	createColor = lipgloss.Color(lightPalette["green"])
+	destroyColor = lipgloss.Color(lightPalette["red"])
+	updateColor = lipgloss.Color(lightPalette["yellow"])
+	replaceColor = lipgloss.Color(lightPalette["mauve"])
+	readColor = lipgloss.Color(lightPalette["sapphire"])
+	selectedBg = lipgloss.Color(lightPalette["surface1"])
+	headerColor = lipgloss.Color(lightPalette["blue"])
+	borderColor = lipgloss.Color(lightPalette["surface0"])
+	mutedColorVal = lipgloss.Color(lightPalette["overlay"])
+	textColor = lipgloss.Color(lightPalette["text"])
+	computedColor = lipgloss.Color(lightPalette["teal"])
+	initStyles() // Reinitialize styles with new colors
+}
+
+// Styles - initialized after colors are set
 var (
+	appStyle           lipgloss.Style
+	headerStyle        lipgloss.Style
+	summaryStyle       lipgloss.Style
+	resourceCreateStyle  lipgloss.Style
+	resourceDestroyStyle lipgloss.Style
+	resourceUpdateStyle  lipgloss.Style
+	resourceReplaceStyle lipgloss.Style
+	resourceReadStyle    lipgloss.Style
+	selectedStyle      lipgloss.Style
+	attrNameStyle      lipgloss.Style
+	attrValueStyle     lipgloss.Style
+	attrOldValueStyle  lipgloss.Style
+	attrNewValueStyle  lipgloss.Style
+	attrComputedStyle  lipgloss.Style
+	mutedColor         lipgloss.Style
+	helpStyle          lipgloss.Style
+	searchStyle        lipgloss.Style
+	searchInputStyle   lipgloss.Style
+	matchStyle         lipgloss.Style
+	sectionBorderStyle lipgloss.Style
+	statusBarStyle     lipgloss.Style
+)
+
+// Action symbols - set after colors
+var (
+	createSymbol       string
+	destroySymbol      string
+	updateSymbol       string
+	replaceSymbol      string
+	readSymbol         string
+	expandedIndicator  string
+	collapsedIndicator string
+)
+
+func initStyles() {
 	// App container
 	appStyle = lipgloss.NewStyle().
 		Padding(1, 2)
@@ -88,14 +208,14 @@ var (
 		Foreground(mutedColorVal)
 
 	// Action symbols
-	createSymbol  = lipgloss.NewStyle().Foreground(createColor).Render("+")
+	createSymbol = lipgloss.NewStyle().Foreground(createColor).Render("+")
 	destroySymbol = lipgloss.NewStyle().Foreground(destroyColor).Render("-")
-	updateSymbol  = lipgloss.NewStyle().Foreground(updateColor).Render("~")
+	updateSymbol = lipgloss.NewStyle().Foreground(updateColor).Render("~")
 	replaceSymbol = lipgloss.NewStyle().Foreground(replaceColor).Render("±")
-	readSymbol    = lipgloss.NewStyle().Foreground(readColor).Render("≤")
+	readSymbol = lipgloss.NewStyle().Foreground(readColor).Render("≤")
 
 	// Expand/collapse indicators
-	expandedIndicator  = lipgloss.NewStyle().Foreground(mutedColorVal).Render("▼")
+	expandedIndicator = lipgloss.NewStyle().Foreground(mutedColorVal).Render("▼")
 	collapsedIndicator = lipgloss.NewStyle().Foreground(mutedColorVal).Render("▶")
 
 	// Help style
@@ -115,8 +235,8 @@ var (
 
 	// Match highlight
 	matchStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#45475a")). // surface1
-		Foreground(lipgloss.Color("#40d97f")). // vivid green
+		Background(selectedBg).
+		Foreground(createColor).
 		Bold(true)
 
 	// Border style for sections
@@ -128,9 +248,9 @@ var (
 	// Status bar
 	statusBarStyle = lipgloss.NewStyle().
 		Foreground(mutedColorVal).
-		Background(lipgloss.Color("#181825")). // mantle
+		Background(lipgloss.Color(darkPalette["mantle"])).
 		Padding(0, 1)
-)
+}
 
 // GetActionSymbol returns the appropriate symbol for an action
 func GetActionSymbol(action string) string {
@@ -167,4 +287,3 @@ func GetResourceStyle(action string) lipgloss.Style {
 		return resourceUpdateStyle
 	}
 }
-

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -13,22 +12,6 @@ import (
 func init() {
 	// Force color output even when not a TTY (for piping)
 	lipgloss.SetColorProfile(termenv.TrueColor)
-}
-
-// SetColorOutput forces or disables color output
-func SetColorOutput(force bool) {
-	if force {
-		lipgloss.SetColorProfile(termenv.TrueColor)
-	} else {
-		// Auto-detect based on terminal
-		lipgloss.SetColorProfile(termenv.ColorProfile())
-	}
-}
-
-// ForceColors enables true color output regardless of TTY detection
-func ForceColors() {
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	os.Setenv("CLICOLOR_FORCE", "1")
 }
 
 // PrintPlan outputs the plan with colors to stdout (non-interactive mode)

@@ -15,7 +15,11 @@ import (
 
 const version = "0.1.0"
 
-var printMode = false
+var (
+	printMode  = false
+	forceLight = false
+	forceDark  = false
+)
 
 func main() {
 	// Check for help/version flags
@@ -32,11 +36,22 @@ func main() {
 			os.Exit(0)
 		case "-p", "--print":
 			printMode = true
+		case "--light":
+			forceLight = true
+		case "--dark":
+			forceDark = true
 		default:
 			if !strings.HasPrefix(args[i], "-") {
 				inputFile = args[i]
 			}
 		}
+	}
+
+	// Apply color scheme override
+	if forceLight {
+		tui.SetLightPalette()
+	} else if forceDark {
+		tui.SetDarkPalette()
 	}
 
 	// Read from stdin or file
@@ -140,6 +155,8 @@ OPTIONS:
     -h, --help      Show this help message
     -v, --version   Show version
     -p, --print     Print colored output without interactive TUI
+    --light         Force light color scheme (Catppuccin Latte)
+    --dark          Force dark color scheme (Catppuccin Mocha)
 
 EXAMPLES:
     # Pipe from terraform
