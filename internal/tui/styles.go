@@ -4,23 +4,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Theme colors - Nightfox color palette
-// https://github.com/EdenEast/nightfox.nvim
+// Theme colors - Nightfox Deep palette
+// Based on Nightfox with deeper, richer saturation
 var (
-	// Primary colors for actions
-	createColor  = lipgloss.Color("#81b29a") // Nightfox green
-	destroyColor = lipgloss.Color("#c94f6d") // Nightfox red
-	updateColor  = lipgloss.Color("#dbc074") // Nightfox yellow
-	replaceColor = lipgloss.Color("#9d79d6") // Nightfox magenta
-	readColor    = lipgloss.Color("#63cdcf") // Nightfox cyan
+	// Primary colors for actions (deep, rich tones)
+	createColor  = lipgloss.Color("#4fd6be") // Deep teal green
+	destroyColor = lipgloss.Color("#e05f75") // Deep coral red
+	updateColor  = lipgloss.Color("#ffc777") // Deep golden amber
+	replaceColor = lipgloss.Color("#c099ff") // Deep violet
+	readColor    = lipgloss.Color("#50c4fa") // Deep sky blue
 
 	// UI colors
-	selectedBg    = lipgloss.Color("#2b3b51") // Nightfox selection
-	headerColor   = lipgloss.Color("#719cd6") // Nightfox blue
-	borderColor   = lipgloss.Color("#39506d") // Nightfox border
-	mutedColorVal = lipgloss.Color("#738091") // Nightfox comment
-	textColor     = lipgloss.Color("#cdcecf") // Nightfox foreground
-	computedColor = lipgloss.Color("#63cdcf") // Nightfox cyan
+	selectedBg    = lipgloss.Color("#1e2a3a") // Deep navy selection
+	headerColor   = lipgloss.Color("#82aaff") // Deep periwinkle
+	borderColor   = lipgloss.Color("#3b5070") // Deep slate
+	mutedColorVal = lipgloss.Color("#7a88a0") // Deep gray
+	textColor     = lipgloss.Color("#c8d3f5") // Soft lavender white
+	computedColor = lipgloss.Color("#4fd6be") // Deep teal
 )
 
 // Styles
@@ -115,8 +115,8 @@ var (
 
 	// Match highlight
 	matchStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#2b3b51")).
-		Foreground(lipgloss.Color("#81b29a")).
+		Background(lipgloss.Color("#1e2a3a")).
+		Foreground(lipgloss.Color("#4fd6be")).
 		Bold(true)
 
 	// Border style for sections
@@ -128,7 +128,7 @@ var (
 	// Status bar
 	statusBarStyle = lipgloss.NewStyle().
 		Foreground(mutedColorVal).
-		Background(lipgloss.Color("#192330")).
+		Background(lipgloss.Color("#131a24")).
 		Padding(0, 1)
 )
 
