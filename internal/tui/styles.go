@@ -4,23 +4,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Theme colors - Catppuccin Mocha palette
-// Matching user's starship terminal colors
+// Theme colors - Catppuccin Mocha (Crisp)
+// Brighter, more vivid variants for better visibility
 var (
-	// Primary colors for actions
-	createColor  = lipgloss.Color("#a6e3a1") // green
-	destroyColor = lipgloss.Color("#f38ba8") // red
-	updateColor  = lipgloss.Color("#f9e2af") // yellow
-	replaceColor = lipgloss.Color("#cba6f7") // mauve
-	readColor    = lipgloss.Color("#74c7ec") // sapphire
+	// Primary colors for actions (crisp, vivid tones)
+	createColor  = lipgloss.Color("#40d97f") // vivid green
+	destroyColor = lipgloss.Color("#ff6b8a") // vivid red
+	updateColor  = lipgloss.Color("#ffd866") // vivid yellow
+	replaceColor = lipgloss.Color("#d4a5ff") // vivid mauve
+	readColor    = lipgloss.Color("#5ccfe6") // vivid sapphire
 
 	// UI colors
 	selectedBg    = lipgloss.Color("#45475a") // surface1
-	headerColor   = lipgloss.Color("#89b4fa") // blue
+	headerColor   = lipgloss.Color("#7dcfff") // vivid blue
 	borderColor   = lipgloss.Color("#313244") // surface0
-	mutedColorVal = lipgloss.Color("#7f849c") // overlay1
-	textColor     = lipgloss.Color("#cdd6f4") // text
-	computedColor = lipgloss.Color("#94e2d5") // teal
+	mutedColorVal = lipgloss.Color("#9399b2") // overlay2 (brighter)
+	textColor     = lipgloss.Color("#e4e8f7") // brighter text
+	computedColor = lipgloss.Color("#5de4c7") // vivid teal
 )
 
 // Styles
@@ -116,7 +116,7 @@ var (
 	// Match highlight
 	matchStyle = lipgloss.NewStyle().
 		Background(lipgloss.Color("#45475a")). // surface1
-		Foreground(lipgloss.Color("#a6e3a1")). // green
+		Foreground(lipgloss.Color("#40d97f")). // vivid green
 		Bold(true)
 
 	// Border style for sections
