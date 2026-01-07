@@ -8,25 +8,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/reflow/ansi"
 
 	"github.com/CaptShanks/terraprism/internal/parser"
 )
-
-// padToWidth pads a string with spaces to reach the target width
-// Accounts for ANSI escape codes when calculating visible width
-func padToWidth(s string, targetWidth int) string {
-	if targetWidth <= 0 {
-		return s
-	}
-	// Get visible width (excluding ANSI codes)
-	visibleWidth := ansi.PrintableRuneWidth(s)
-	if visibleWidth >= targetWidth {
-		return s
-	}
-	padding := targetWidth - visibleWidth
-	return s + strings.Repeat(" ", padding)
-}
 
 // Model represents the TUI state
 type Model struct {
@@ -192,12 +176,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "d", "ctrl+d":
 				// Half page down (vim style)
 				halfPage := m.viewport.Height / 2
-				m.viewport.LineDown(halfPage)
+				for i := 0; i < halfPage; i++ {
+					m.viewport.LineDown(1)
+				}
 
 			case "u", "ctrl+u":
 				// Half page up (vim style)
 				halfPage := m.viewport.Height / 2
-				m.viewport.LineUp(halfPage)
+				for i := 0; i < halfPage; i++ {
+					m.viewport.LineUp(1)
+				}
 
 			case "g":
 				if m.pendingG {
@@ -219,10 +207,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pendingG = false
 
 			case "pgup":
-				m.viewport.ViewUp()
+				m.viewport.GotoTop()
+				m.viewport.SetYOffset(m.viewport.YOffset - m.viewport.Height)
 
 			case "pgdown":
-				m.viewport.ViewDown()
+				m.viewport.SetYOffset(m.viewport.YOffset + m.viewport.Height)
 
 			case "l", "right":
 				// Expand current (like navigating into)
@@ -554,50 +543,6 @@ func (m Model) colorizeValue(value string, action parser.Action) string {
 	}
 }
 
-func (m Model) renderAttributeLine(attr parser.Attribute, parentAction parser.Action) string {
-	var b strings.Builder
-	b.WriteString("    ")
-
-	// Attribute action symbol
-	switch attr.Action {
-	case parser.ActionCreate:
-		b.WriteString(createSymbol)
-	case parser.ActionDestroy:
-		b.WriteString(destroySymbol)
-	case parser.ActionUpdate:
-		b.WriteString(updateSymbol)
-	default:
-		b.WriteString(" ")
-	}
-	b.WriteString(" ")
-
-	// Attribute name
-	b.WriteString(attrNameStyle.Render(attr.Name))
-
-	if attr.OldValue != "" || attr.NewValue != "" {
-		b.WriteString(" = ")
-		
-		if attr.Computed {
-			b.WriteString(attrComputedStyle.Render("(known after apply)"))
-		} else if attr.OldValue != "" && attr.NewValue != "" {
-			// Show change: old -> new
-			b.WriteString(attrOldValueStyle.Render(truncateValue(attr.OldValue)))
-			b.WriteString(" → ")
-			b.WriteString(attrNewValueStyle.Render(truncateValue(attr.NewValue)))
-		} else if attr.NewValue != "" {
-			style := attrNewValueStyle
-			if attr.Action == parser.ActionDestroy {
-				style = attrOldValueStyle
-			}
-			b.WriteString(style.Render(truncateValue(attr.NewValue)))
-		} else if attr.OldValue != "" {
-			b.WriteString(attrOldValueStyle.Render(truncateValue(attr.OldValue)))
-		}
-	}
-
-	return b.String()
-}
-
 func highlightMatch(text, query string) string {
 	lower := strings.ToLower(text)
 	lowerQuery := strings.ToLower(query)
@@ -633,19 +578,6 @@ func getActionDescription(action parser.Action) string {
 	default:
 		return ""
 	}
-}
-
-func truncateValue(s string) string {
-	s = strings.TrimSpace(s)
-	// Remove surrounding quotes if present
-	if len(s) > 1 && s[0] == '"' && s[len(s)-1] == '"' {
-		s = s[1 : len(s)-1]
-	}
-	
-	if len(s) > 60 {
-		return s[:57] + "..."
-	}
-	return s
 }
 
 // View renders the UI

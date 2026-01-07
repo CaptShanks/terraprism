@@ -110,27 +110,22 @@ func SetLightPalette() {
 
 // Styles - initialized after colors are set
 var (
-	appStyle           lipgloss.Style
-	headerStyle        lipgloss.Style
-	summaryStyle       lipgloss.Style
+	appStyle             lipgloss.Style
+	headerStyle          lipgloss.Style
+	summaryStyle         lipgloss.Style
 	resourceCreateStyle  lipgloss.Style
 	resourceDestroyStyle lipgloss.Style
 	resourceUpdateStyle  lipgloss.Style
 	resourceReplaceStyle lipgloss.Style
 	resourceReadStyle    lipgloss.Style
-	selectedStyle      lipgloss.Style
-	attrNameStyle      lipgloss.Style
-	attrValueStyle     lipgloss.Style
-	attrOldValueStyle  lipgloss.Style
-	attrNewValueStyle  lipgloss.Style
-	attrComputedStyle  lipgloss.Style
-	mutedColor         lipgloss.Style
-	helpStyle          lipgloss.Style
-	searchStyle        lipgloss.Style
-	searchInputStyle   lipgloss.Style
-	matchStyle         lipgloss.Style
-	sectionBorderStyle lipgloss.Style
-	statusBarStyle     lipgloss.Style
+	attrNameStyle        lipgloss.Style
+	attrOldValueStyle    lipgloss.Style
+	attrNewValueStyle    lipgloss.Style
+	attrComputedStyle    lipgloss.Style
+	mutedColor           lipgloss.Style
+	helpStyle            lipgloss.Style
+	searchStyle          lipgloss.Style
+	matchStyle           lipgloss.Style
 )
 
 // Action symbols - set after colors
@@ -181,16 +176,9 @@ func initStyles() {
 		Bold(true).
 		Foreground(readColor)
 
-	// Selected row
-	selectedStyle = lipgloss.NewStyle().
-		Background(selectedBg)
-
 	// Attribute styles
 	attrNameStyle = lipgloss.NewStyle().
 		Foreground(textColor)
-
-	attrValueStyle = lipgloss.NewStyle().
-		Foreground(mutedColorVal)
 
 	attrOldValueStyle = lipgloss.NewStyle().
 		Foreground(destroyColor).
@@ -228,28 +216,11 @@ func initStyles() {
 		Foreground(headerColor).
 		Bold(true)
 
-	searchInputStyle = lipgloss.NewStyle().
-		Foreground(textColor).
-		Background(selectedBg).
-		Padding(0, 1)
-
 	// Match highlight
 	matchStyle = lipgloss.NewStyle().
 		Background(selectedBg).
 		Foreground(createColor).
 		Bold(true)
-
-	// Border style for sections
-	sectionBorderStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1)
-
-	// Status bar
-	statusBarStyle = lipgloss.NewStyle().
-		Foreground(mutedColorVal).
-		Background(lipgloss.Color(darkPalette["mantle"])).
-		Padding(0, 1)
 }
 
 // GetActionSymbol returns the appropriate symbol for an action

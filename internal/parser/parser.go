@@ -378,9 +378,9 @@ func parseSummary(plan *Plan, lines []string) {
 		if match := summaryRegex.FindStringSubmatch(line); match != nil {
 			plan.Summary = line
 			// Parse numbers (ignore errors, default to 0)
-			fmt.Sscanf(match[1], "%d", &plan.TotalAdd)
-			fmt.Sscanf(match[2], "%d", &plan.TotalChange)
-			fmt.Sscanf(match[3], "%d", &plan.TotalDestroy)
+			_, _ = fmt.Sscanf(match[1], "%d", &plan.TotalAdd)
+			_, _ = fmt.Sscanf(match[2], "%d", &plan.TotalChange)
+			_, _ = fmt.Sscanf(match[3], "%d", &plan.TotalDestroy)
 			break
 		}
 	}
