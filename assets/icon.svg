@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <!-- Gradient for the prism -->
+    <linearGradient id="prismGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#89b4fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#cba6f7;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Glow effect -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#1e1e2e"/>
+  
+  <!-- The Prism (triangle) -->
+  <polygon points="64,20 104,100 24,100" fill="url(#prismGrad)" filter="url(#glow)" opacity="0.95"/>
+  <polygon points="64,20 104,100 24,100" fill="none" stroke="#cdd6f4" stroke-width="1.5" opacity="0.4"/>
+  
+  <!-- Light rays coming out -->
+  <line x1="85" y1="55" x2="110" y2="35" stroke="#a6e3a1" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <line x1="90" y1="65" x2="115" y2="58" stroke="#f9e2af" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <line x1="93" y1="78" x2="118" y2="82" stroke="#f38ba8" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <line x1="95" y1="88" x2="115" y2="105" stroke="#cba6f7" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  
+  <!-- Incoming light -->
+  <line x1="10" y1="64" x2="40" y2="64" stroke="#cdd6f4" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+</svg>
+

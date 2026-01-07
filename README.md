@@ -1,14 +1,26 @@
-# Terra-Prism 🔺✨
+<p align="center">
+  <img src="assets/logo-dark.svg" alt="Terra-Prism Logo" width="400">
+</p>
 
-[![CI](https://github.com/CaptShanks/terraprism/actions/workflows/ci.yml/badge.svg)](https://github.com/CaptShanks/terraprism/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/CaptShanks/terraprism?include_prereleases)](https://github.com/CaptShanks/terraprism/releases)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/CaptShanks/terraprism)](https://go.dev/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/CaptShanks/terraprism)](https://goreportcard.com/report/github.com/CaptShanks/terraprism)
-[![License](https://img.shields.io/github/license/CaptShanks/terraprism)](LICENSE)
+<p align="center">
+  <strong>A beautiful terminal UI for viewing Terraform and OpenTofu plans</strong>
+</p>
 
-A beautiful terminal UI for interactively viewing Terraform and OpenTofu plans with collapsible resources and syntax-highlighted colors.
+<p align="center">
+  <a href="https://github.com/CaptShanks/terraprism/actions/workflows/ci.yml"><img src="https://github.com/CaptShanks/terraprism/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/CaptShanks/terraprism/releases"><img src="https://img.shields.io/github/v/release/CaptShanks/terraprism?include_prereleases" alt="Release"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/github/go-mod/go-version/CaptShanks/terraprism" alt="Go Version"></a>
+  <a href="https://goreportcard.com/report/github.com/CaptShanks/terraprism"><img src="https://goreportcard.com/badge/github.com/CaptShanks/terraprism" alt="Go Report Card"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/CaptShanks/terraprism" alt="License"></a>
+</p>
 
-![Terra-Prism demo](https://user-images.githubusercontent.com/demo/terraprism-demo.gif)
+<p align="center">
+  Collapsible resources • Syntax-highlighted HCL • Vim-style navigation • Auto light/dark mode
+</p>
+
+---
+
+<!-- ![Terra-Prism demo](assets/demo.gif) -->
 
 ## Features
 

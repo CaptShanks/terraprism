@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <defs>
+    <!-- Gradient for the prism -->
+    <linearGradient id="prismGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#89b4fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#cba6f7;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Gradient for incoming light -->
+    <linearGradient id="whiteLight" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#cdd6f4;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#cdd6f4;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Glow effect -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Dark Background -->
+  <rect width="400" height="200" fill="#1e1e2e" rx="12"/>
+  
+  <!-- Incoming white light beam -->
+  <line x1="20" y1="100" x2="85" y2="100" stroke="url(#whiteLight)" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- The Prism (triangle) -->
+  <polygon points="90,40 150,160 30,160" fill="url(#prismGradient)" filter="url(#glow)" opacity="0.9"/>
+  <polygon points="90,40 150,160 30,160" fill="none" stroke="#cdd6f4" stroke-width="1.5" opacity="0.5"/>
+  
+  <!-- Refracted light beams (terraform action colors) -->
+  <!-- Green - Create -->
+  <line x1="130" y1="85" x2="180" y2="55" stroke="#a6e3a1" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <!-- Yellow - Update -->
+  <line x1="135" y1="100" x2="180" y2="90" stroke="#f9e2af" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <!-- Red - Destroy -->
+  <line x1="140" y1="115" x2="180" y2="125" stroke="#f38ba8" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <!-- Purple - Replace -->
+  <line x1="145" y1="130" x2="180" y2="160" stroke="#cba6f7" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  
+  <!-- Text: TERRA -->
+  <text x="195" y="95" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="42" font-weight="700" fill="#cdd6f4">
+    TERRA
+  </text>
+  
+  <!-- Text: PRISM -->
+  <text x="195" y="140" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="42" font-weight="300" fill="#a6adc8">
+    PRISM
+  </text>
+  
+  <!-- Small action labels -->
+  <text x="185" y="58" font-family="monospace" font-size="10" fill="#a6e3a1">+ create</text>
+  <text x="185" y="93" font-family="monospace" font-size="10" fill="#f9e2af">~ update</text>
+  <text x="185" y="128" font-family="monospace" font-size="10" fill="#f38ba8">- destroy</text>
+  <text x="185" y="163" font-family="monospace" font-size="10" fill="#cba6f7">± replace</text>
+</svg>
+
