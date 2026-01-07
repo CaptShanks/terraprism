@@ -1,5 +1,11 @@
 # Terra-Prism 🔺✨
 
+[![CI](https://github.com/CaptShanks/terraprism/actions/workflows/ci.yml/badge.svg)](https://github.com/CaptShanks/terraprism/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/CaptShanks/terraprism?include_prereleases)](https://github.com/CaptShanks/terraprism/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/CaptShanks/terraprism)](https://go.dev/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/CaptShanks/terraprism)](https://goreportcard.com/report/github.com/CaptShanks/terraprism)
+[![License](https://img.shields.io/github/license/CaptShanks/terraprism)](LICENSE)
+
 A beautiful terminal UI for interactively viewing Terraform and OpenTofu plans with collapsible resources and syntax-highlighted colors.
 
 ![Terra-Prism demo](https://user-images.githubusercontent.com/demo/terraprism-demo.gif)
