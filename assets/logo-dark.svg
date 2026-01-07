@@ -9,38 +9,45 @@
   <!-- Dark Background -->
   <rect width="500" height="140" fill="#1e1e2e" rx="10"/>
   
-  <!-- Terraform-style Logo -->
-  <g transform="translate(25, 30)">
-    <polygon points="0,0 25,15 25,55 0,40" fill="#844fba" opacity="0.9"/>
-    <polygon points="30,18 55,33 55,73 30,58" fill="#844fba" opacity="0.7"/>
-    <polygon points="30,0 55,15 55,55 30,40" fill="#5c4ee5" opacity="0.9"/>
+  <!-- Official Terraform Logo (T shape with 3 parallelograms) -->
+  <g transform="translate(20, 25) scale(0.85)">
+    <!-- Left vertical bar (2 stacked pieces) -->
+    <path d="M0 0 L35 20 L35 60 L0 40 Z" fill="#5c4ee5"/>
+    <path d="M0 45 L35 65 L35 105 L0 85 Z" fill="#5c4ee5"/>
+    
+    <!-- Right top piece -->
+    <path d="M40 23 L75 43 L75 83 L40 63 Z" fill="#844fba"/>
+    
+    <!-- Top horizontal piece -->
+    <path d="M40 0 L75 20 L75 20 L40 0 Z" fill="#4040b2"/>
+    <path d="M40 0 L75 20 L75 40 L40 20 Z" fill="#7b42bc"/>
   </g>
   
   <!-- Arrow going into prism -->
-  <line x1="95" y1="70" x2="125" y2="70" stroke="#cdd6f4" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
-  <polygon points="120,65 132,70 120,75" fill="#cdd6f4" opacity="0.8"/>
+  <line x1="100" y1="70" x2="130" y2="70" stroke="#cdd6f4" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+  <polygon points="125,65 137,70 125,75" fill="#cdd6f4" opacity="0.8"/>
   
   <!-- The Prism -->
-  <polygon points="160,25 200,115 120,115" fill="url(#prismGradient)" opacity="0.95"/>
-  <polygon points="160,25 200,115 120,115" fill="none" stroke="#cdd6f4" stroke-width="1" opacity="0.4"/>
+  <polygon points="165,25 205,115 125,115" fill="url(#prismGradient)" opacity="0.95"/>
+  <polygon points="165,25 205,115 125,115" fill="none" stroke="#cdd6f4" stroke-width="1" opacity="0.4"/>
   
   <!-- Rainbow rays -->
-  <line x1="185" y1="55" x2="235" y2="28" stroke="#a6e3a1" stroke-width="5" stroke-linecap="round"/>
-  <line x1="190" y1="70" x2="240" y2="52" stroke="#94e2d5" stroke-width="5" stroke-linecap="round"/>
-  <line x1="193" y1="82" x2="243" y2="76" stroke="#f9e2af" stroke-width="5" stroke-linecap="round"/>
-  <line x1="195" y1="93" x2="245" y2="100" stroke="#fab387" stroke-width="5" stroke-linecap="round"/>
-  <line x1="197" y1="103" x2="245" y2="122" stroke="#f38ba8" stroke-width="5" stroke-linecap="round"/>
+  <line x1="190" y1="55" x2="240" y2="28" stroke="#a6e3a1" stroke-width="5" stroke-linecap="round"/>
+  <line x1="195" y1="70" x2="245" y2="52" stroke="#94e2d5" stroke-width="5" stroke-linecap="round"/>
+  <line x1="198" y1="82" x2="248" y2="76" stroke="#f9e2af" stroke-width="5" stroke-linecap="round"/>
+  <line x1="200" y1="93" x2="250" y2="100" stroke="#fab387" stroke-width="5" stroke-linecap="round"/>
+  <line x1="202" y1="103" x2="250" y2="122" stroke="#f38ba8" stroke-width="5" stroke-linecap="round"/>
   
   <!-- Text: TERRA -->
-  <text x="265" y="65" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#cdd6f4">TERRA</text>
+  <text x="270" y="65" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#cdd6f4">TERRA</text>
   
   <!-- Text: PRISM -->
-  <text x="265" y="100" font-family="Arial, sans-serif" font-size="32" font-weight="300" fill="#a6adc8">PRISM</text>
+  <text x="270" y="100" font-family="Arial, sans-serif" font-size="32" font-weight="300" fill="#a6adc8">PRISM</text>
   
   <!-- Action legend -->
-  <text x="385" y="40" font-family="Courier, monospace" font-size="11" fill="#a6e3a1">+ create</text>
-  <text x="385" y="56" font-family="Courier, monospace" font-size="11" fill="#f9e2af">~ update</text>
-  <text x="385" y="72" font-family="Courier, monospace" font-size="11" fill="#f38ba8">- destroy</text>
-  <text x="385" y="88" font-family="Courier, monospace" font-size="11" fill="#cba6f7">± replace</text>
-  <text x="385" y="104" font-family="Courier, monospace" font-size="11" fill="#74c7ec">≤ read</text>
+  <text x="390" y="40" font-family="Courier, monospace" font-size="11" fill="#a6e3a1">+ create</text>
+  <text x="390" y="56" font-family="Courier, monospace" font-size="11" fill="#f9e2af">~ update</text>
+  <text x="390" y="72" font-family="Courier, monospace" font-size="11" fill="#f38ba8">- destroy</text>
+  <text x="390" y="88" font-family="Courier, monospace" font-size="11" fill="#cba6f7">± replace</text>
+  <text x="390" y="104" font-family="Courier, monospace" font-size="11" fill="#74c7ec">≤ read</text>
 </svg>
