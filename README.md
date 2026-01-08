@@ -24,13 +24,13 @@
 
 ## Features
 
-- 🎨 **Syntax-highlighted HCL** - Full color-coded display of your plan
-- 📁 **Collapsible resources** - Expand/collapse individual resources or all at once
-- 🔍 **Search** - Find resources by name, type, or address
-- ⌨️ **Vim-style navigation** - j/k/gg/G/d/u and more
-- 🌗 **Auto light/dark mode** - Detects your terminal background
-- 📋 **Format support** - Works with Terraform 0.11+ and OpenTofu
-- 🎯 **Full-line selection** - Clear visual indicator of selected resource
+- **Syntax-highlighted HCL** - Full color-coded display of your plan
+- **Collapsible resources** - Expand/collapse individual resources or all at once
+- **Search** - Find resources by name, type, or address
+- **Vim-style navigation** - j/k/gg/G/d/u and more
+- **Auto light/dark mode** - Detects your terminal background
+- **Format support** - Works with Terraform 0.11+ and OpenTofu
+- **Full-line selection** - Clear visual indicator of selected resource
 
 ## Installation
 
@@ -60,7 +60,7 @@ Download binaries from the [Releases](https://github.com/CaptShanks/terraprism/r
 
 ## Usage
 
-### 🚀 Apply Mode (Recommended)
+### Apply Mode (Recommended)
 
 Review and apply in one command:
 
@@ -152,11 +152,11 @@ terraform plan -no-color | terraprism -p
 Terra-Prism automatically detects your terminal background and uses appropriate colors:
 
 ### Dark Mode (Catppuccin Mocha)
-- 🟢 Green for resources being created
-- 🔴 Red for resources being destroyed
-- 🟡 Yellow for resources being updated
-- 🟣 Purple for resources being replaced
-- 🔵 Blue for data sources being read
+- Green for resources being created
+- Red for resources being destroyed
+- Yellow for resources being updated
+- Purple for resources being replaced
+- Blue for data sources being read
 
 ### Light Mode (Catppuccin Latte)
 Automatically switches to darker, more visible colors on light backgrounds.
@@ -181,18 +181,18 @@ terraprism --light plan.txt  # Force light mode
 
 Large Terraform plans can be difficult to review:
 
-- ❌ Hundreds of resources make it hard to find specific changes
-- ❌ Long attribute values span multiple lines
-- ❌ No easy way to focus on specific resources
-- ❌ Color coding from Terraform can be lost when piping
+- Hundreds of resources make it hard to find specific changes
+- Long attribute values span multiple lines
+- No easy way to focus on specific resources
+- Color coding from Terraform can be lost when piping
 
 Terra-Prism solves these problems:
 
-- ✅ Collapsible sections for high-level overview
-- ✅ Consistent syntax highlighting
-- ✅ Search to find specific resources
-- ✅ Vim-style navigation for efficiency
-- ✅ Auto-scrolling keeps selection visible
+- Collapsible sections for high-level overview
+- Consistent syntax highlighting
+- Search to find specific resources
+- Vim-style navigation for efficiency
+- Auto-scrolling keeps selection visible
 
 ## Inspired By
 
@@ -229,4 +229,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-Made with ❤️ and Go
+Made with Go
