@@ -147,4 +147,3 @@ No changes. Infrastructure is up-to-date.
 		t.Errorf("Expected 0 resources, got %d", len(plan.Resources))
 	}
 }
-

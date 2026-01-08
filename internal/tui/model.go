@@ -14,19 +14,19 @@ import (
 
 // Model represents the TUI state
 type Model struct {
-	plan           *parser.Plan
-	cursor         int
-	expanded       map[int]bool
-	viewport       viewport.Model
-	ready          bool
-	width          int
-	height         int
-	searching      bool
-	searchInput    textinput.Model
-	searchQuery    string
-	searchMatches  []int
-	currentMatch   int
-	pendingG       bool // Track if 'g' was pressed, waiting for second 'g'
+	plan          *parser.Plan
+	cursor        int
+	expanded      map[int]bool
+	viewport      viewport.Model
+	ready         bool
+	width         int
+	height        int
+	searching     bool
+	searchInput   textinput.Model
+	searchQuery   string
+	searchMatches []int
+	currentMatch  int
+	pendingG      bool // Track if 'g' was pressed, waiting for second 'g'
 
 	// Apply mode fields
 	applyMode    bool   // Whether apply is available
@@ -92,7 +92,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		headerHeight := 4 // Title + summary + blank line
 		footerHeight := 3 // Help text
-		
+
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width-4, msg.Height-headerHeight-footerHeight)
 			m.viewport.YPosition = headerHeight
@@ -330,7 +330,7 @@ func (m *Model) gotoBottom() {
 func (m *Model) performSearch() {
 	m.searchMatches = []int{}
 	m.currentMatch = 0
-	
+
 	if m.searchQuery == "" {
 		return
 	}
@@ -369,7 +369,7 @@ func (m *Model) ensureCursorVisible() {
 		if m.expanded[i] {
 			// Add the content lines for expanded resources
 			lineNum += len(m.plan.Resources[i].RawLines) // includes header + content
-			lineNum++ // blank line after expanded resource
+			lineNum++                                    // blank line after expanded resource
 		}
 	}
 
@@ -398,7 +398,7 @@ func (m Model) renderResources() string {
 		isSelected := i == m.cursor
 		isExpanded := m.expanded[i]
 		isMatch := false
-		
+
 		for _, match := range m.searchMatches {
 			if match == i {
 				isMatch = true
@@ -508,12 +508,12 @@ func (m Model) renderResourceLine(r parser.Resource, expanded bool, isMatch bool
 	// Resource address
 	style := GetResourceStyle(string(r.Action))
 	address := r.Address
-	
+
 	if isMatch && m.searchQuery != "" {
 		// Highlight matching text
 		address = highlightMatch(address, m.searchQuery)
 	}
-	
+
 	b.WriteString(style.Render(address))
 
 	// Action description
@@ -638,7 +638,7 @@ func (m Model) colorizeValue(value string, action parser.Action) string {
 func highlightMatch(text, query string) string {
 	lower := strings.ToLower(text)
 	lowerQuery := strings.ToLower(query)
-	
+
 	idx := strings.Index(lower, lowerQuery)
 	if idx == -1 {
 		return text
@@ -741,4 +741,3 @@ func (m Model) View() string {
 
 	return appStyle.Render(b.String())
 }
-

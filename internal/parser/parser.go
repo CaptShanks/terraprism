@@ -22,11 +22,11 @@ const (
 
 // Attribute represents a single attribute change
 type Attribute struct {
-	Name     string
-	OldValue string
-	NewValue string
-	Action   Action
-	Computed bool
+	Name      string
+	OldValue  string
+	NewValue  string
+	Action    Action
+	Computed  bool
 	Sensitive bool
 }
 
@@ -57,7 +57,7 @@ func Parse(input string) (*Plan, error) {
 	}
 
 	lines := strings.Split(input, "\n")
-	
+
 	// Try to detect format and parse accordingly
 	if isNewFormat(lines) {
 		parseNewFormat(plan, lines)
@@ -75,7 +75,7 @@ func Parse(input string) (*Plan, error) {
 func isNewFormat(lines []string) bool {
 	for _, line := range lines {
 		// New format uses # for resource headers
-		if strings.Contains(line, "# ") && (strings.Contains(line, " will be ") || 
+		if strings.Contains(line, "# ") && (strings.Contains(line, " will be ") ||
 			strings.Contains(line, " must be ") ||
 			strings.Contains(line, " has been ") ||
 			strings.Contains(line, " is tainted")) {
@@ -90,36 +90,36 @@ func parseNewFormat(plan *Plan, lines []string) {
 	resourceRegex := regexp.MustCompile(`^\s*#\s+(.+?)\s+(will be|must be|has been|is tainted)`)
 	attrRegex := regexp.MustCompile(`^\s+([~+\-])\s+"?([^"=]+)"?\s*=\s*(.*)`)
 	attrRegex2 := regexp.MustCompile(`^\s+([~+\-])\s+(.+)$`)
-	
+
 	var currentResource *Resource
 	inResourceBlock := false
 	braceCount := 0
 
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
-		
+
 		// Check for resource header
 		if match := resourceRegex.FindStringSubmatch(line); match != nil {
 			if currentResource != nil {
 				plan.Resources = append(plan.Resources, *currentResource)
 			}
-			
+
 			address := strings.TrimSpace(match[1])
 			action := parseActionFromLine(line)
-			
+
 			currentResource = &Resource{
 				Address:  address,
 				Action:   action,
 				RawLines: []string{line},
 			}
-			
+
 			// Extract type and name from address
 			parts := strings.Split(address, ".")
 			if len(parts) >= 2 {
 				currentResource.Type = parts[len(parts)-2]
 				currentResource.Name = parts[len(parts)-1]
 			}
-			
+
 			inResourceBlock = true
 			braceCount = 0
 			continue
@@ -127,20 +127,20 @@ func parseNewFormat(plan *Plan, lines []string) {
 
 		if inResourceBlock && currentResource != nil {
 			currentResource.RawLines = append(currentResource.RawLines, line)
-			
+
 			// Count braces to track block depth
 			braceCount += strings.Count(line, "{") - strings.Count(line, "}")
-			
+
 			// Parse attributes
 			if match := attrRegex.FindStringSubmatch(line); match != nil {
 				symbol := match[1]
 				name := strings.TrimSpace(match[2])
 				value := strings.TrimSpace(match[3])
-				
+
 				attr := Attribute{
 					Name: name,
 				}
-				
+
 				switch symbol {
 				case "+":
 					attr.Action = ActionCreate
@@ -159,7 +159,7 @@ func parseNewFormat(plan *Plan, lines []string) {
 						attr.NewValue = value
 					}
 				}
-				
+
 				// Check for computed or sensitive markers
 				if strings.Contains(value, "(known after apply)") {
 					attr.Computed = true
@@ -167,17 +167,17 @@ func parseNewFormat(plan *Plan, lines []string) {
 				if strings.Contains(value, "(sensitive") {
 					attr.Sensitive = true
 				}
-				
+
 				currentResource.Attributes = append(currentResource.Attributes, attr)
 			} else if match := attrRegex2.FindStringSubmatch(line); match != nil {
 				// Simpler attribute format
 				symbol := match[1]
 				content := strings.TrimSpace(match[2])
-				
+
 				attr := Attribute{
 					Name: content,
 				}
-				
+
 				switch symbol {
 				case "+":
 					attr.Action = ActionCreate
@@ -186,7 +186,7 @@ func parseNewFormat(plan *Plan, lines []string) {
 				case "~":
 					attr.Action = ActionUpdate
 				}
-				
+
 				currentResource.Attributes = append(currentResource.Attributes, attr)
 			}
 
@@ -214,7 +214,7 @@ func parseOldFormat(plan *Plan, lines []string) {
 	attrRegex := regexp.MustCompile(`^\s+([^:]+):\s*(.*)$`)
 
 	var currentResource *Resource
-	
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
@@ -295,15 +295,15 @@ func parseOldFormat(plan *Plan, lines []string) {
 		// Parse attributes for current resource
 		if currentResource != nil {
 			currentResource.RawLines = append(currentResource.RawLines, line)
-			
+
 			if match := attrRegex.FindStringSubmatch(line); match != nil {
 				name := strings.TrimSpace(match[1])
 				value := strings.TrimSpace(match[2])
-				
+
 				attr := Attribute{
 					Name: name,
 				}
-				
+
 				// Check for change indicator
 				if strings.Contains(value, " => ") {
 					parts := strings.SplitN(value, " => ", 2)
@@ -314,11 +314,11 @@ func parseOldFormat(plan *Plan, lines []string) {
 					attr.NewValue = value
 					attr.Action = currentResource.Action
 				}
-				
+
 				if strings.Contains(value, "<computed>") {
 					attr.Computed = true
 				}
-				
+
 				currentResource.Attributes = append(currentResource.Attributes, attr)
 			}
 		}
@@ -340,7 +340,7 @@ func parseResourceAddress(r *Resource) {
 
 func parseActionFromLine(line string) Action {
 	lower := strings.ToLower(line)
-	
+
 	if strings.Contains(lower, "will be created") || strings.Contains(lower, "has been created") {
 		return ActionCreate
 	}
@@ -359,7 +359,7 @@ func parseActionFromLine(line string) Action {
 	if strings.Contains(lower, "is tainted") {
 		return ActionReplace
 	}
-	
+
 	// Check for destroy-create or create-destroy
 	if strings.Contains(lower, "destroyed and then created") || strings.Contains(lower, "-/+") {
 		return ActionDeleteCreate
@@ -367,13 +367,13 @@ func parseActionFromLine(line string) Action {
 	if strings.Contains(lower, "created and then destroyed") || strings.Contains(lower, "+/-") {
 		return ActionCreateDelete
 	}
-	
+
 	return ActionUpdate
 }
 
 func parseSummary(plan *Plan, lines []string) {
 	summaryRegex := regexp.MustCompile(`Plan:\s*(\d+)\s*to add,\s*(\d+)\s*to change,\s*(\d+)\s*to destroy`)
-	
+
 	for _, line := range lines {
 		if match := summaryRegex.FindStringSubmatch(line); match != nil {
 			plan.Summary = line
@@ -385,4 +385,3 @@ func parseSummary(plan *Plan, lines []string) {
 		}
 	}
 }
-

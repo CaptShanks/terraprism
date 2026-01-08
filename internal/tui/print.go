@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/CaptShanks/terraprism/internal/parser"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
-	"github.com/CaptShanks/terraprism/internal/parser"
 )
 
 func init() {

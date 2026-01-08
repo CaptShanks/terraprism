@@ -2,4 +2,3 @@
 // It implements an interactive, colorized viewer for Terraform and OpenTofu plans
 // using the Bubble Tea framework.
 package tui
-
