@@ -60,15 +60,37 @@ Download binaries from the [Releases](https://github.com/CaptShanks/terraprism/r
 
 ## Usage
 
-### Pipe from Terraform
+### 🚀 Apply Mode (Recommended)
+
+Review and apply in one command:
+
+```bash
+# Run plan, review interactively, press 'a' to apply
+terraprism apply
+
+# With OpenTofu
+terraprism --tofu apply
+
+# Pass arguments to terraform/tofu
+terraprism apply -- -target=module.vpc -var="env=prod"
+terraprism --tofu apply -- -var="env=prod"
+```
+
+### Plan Mode
+
+Run plan and view interactively (no apply):
+
+```bash
+terraprism plan
+terraprism --tofu plan
+```
+
+### Pipe Mode
+
+Pipe plan output for viewing:
 
 ```bash
 terraform plan -no-color | terraprism
-```
-
-### Pipe from OpenTofu
-
-```bash
 tofu plan -no-color | terraprism
 ```
 
@@ -114,10 +136,16 @@ terraform plan -no-color | terraprism -p
 | `N` | Previous match |
 | `Esc` | Clear search |
 
+### Apply (in apply mode)
+| Key | Action |
+|-----|--------|
+| `a` | Apply the plan |
+| `y` | Confirm apply |
+
 ### Other
 | Key | Action |
 |-----|--------|
-| `q` / `Ctrl+C` | Quit |
+| `q` / `Ctrl+C` | Quit (cancel apply) |
 
 ## Color Themes
 

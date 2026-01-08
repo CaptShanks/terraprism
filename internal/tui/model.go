@@ -27,9 +27,16 @@ type Model struct {
 	searchMatches  []int
 	currentMatch   int
 	pendingG       bool // Track if 'g' was pressed, waiting for second 'g'
+
+	// Apply mode fields
+	applyMode    bool   // Whether apply is available
+	planFile     string // Path to the plan file
+	tfCommand    string // "terraform" or "tofu"
+	shouldApply  bool   // User pressed 'a' to apply
+	confirmApply bool   // Waiting for confirmation
 }
 
-// NewModel creates a new TUI model
+// NewModel creates a new TUI model (view-only mode)
 func NewModel(plan *parser.Plan) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
@@ -37,11 +44,35 @@ func NewModel(plan *parser.Plan) Model {
 	ti.Width = 40
 
 	return Model{
-		plan:     plan,
-		expanded: make(map[int]bool),
-		searchInput: ti,
+		plan:          plan,
+		expanded:      make(map[int]bool),
+		searchInput:   ti,
 		searchMatches: []int{},
+		applyMode:     false,
 	}
+}
+
+// NewModelWithApply creates a TUI model with apply capability
+func NewModelWithApply(plan *parser.Plan, planFile, tfCommand string) Model {
+	ti := textinput.New()
+	ti.Placeholder = "Search..."
+	ti.CharLimit = 100
+	ti.Width = 40
+
+	return Model{
+		plan:          plan,
+		expanded:      make(map[int]bool),
+		searchInput:   ti,
+		searchMatches: []int{},
+		applyMode:     true,
+		planFile:      planFile,
+		tfCommand:     tfCommand,
+	}
+}
+
+// ShouldApply returns true if user chose to apply
+func (m Model) ShouldApply() bool {
+	return m.shouldApply
 }
 
 // Init initializes the model
@@ -180,6 +211,32 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.expanded[m.cursor] = true
 		m.updateViewportContent()
 		m.ensureCursorVisible()
+
+	case "a":
+		// Apply (only in apply mode)
+		if m.applyMode {
+			if m.confirmApply {
+				// Already confirming, execute apply
+				m.shouldApply = true
+				return m, tea.Quit
+			}
+			// Start confirmation
+			m.confirmApply = true
+			m.updateViewportContent()
+		}
+
+	case "y":
+		// Confirm apply
+		if m.applyMode && m.confirmApply {
+			m.shouldApply = true
+			return m, tea.Quit
+		}
+	}
+
+	// Cancel confirmation on any other key if confirming
+	if m.confirmApply && msg.String() != "a" && msg.String() != "y" {
+		m.confirmApply = false
+		m.updateViewportContent()
 	}
 
 	return m, nil
@@ -652,12 +709,34 @@ func (m Model) View() string {
 		b.WriteString("\n\n")
 	}
 
+	// Confirmation prompt (if confirming apply)
+	if m.confirmApply {
+		confirmStyle := lipgloss.NewStyle().
+			Background(lipgloss.Color("#f38ba8")).
+			Foreground(lipgloss.Color("#1e1e2e")).
+			Bold(true).
+			Padding(0, 2)
+		b.WriteString("\n")
+		b.WriteString(confirmStyle.Render("⚠️  Apply this plan? Press 'y' to confirm, any other key to cancel"))
+		b.WriteString("\n\n")
+	}
+
 	// Viewport with resources
 	b.WriteString(m.viewport.View())
 	b.WriteString("\n")
 
 	// Help footer
-	help := "j/k: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • q: quit"
+	var help string
+	if m.applyMode {
+		if m.confirmApply {
+			help = "y: confirm apply • any key: cancel"
+		} else {
+			applyHint := lipgloss.NewStyle().Foreground(createColor).Bold(true).Render("a: APPLY")
+			help = fmt.Sprintf("%s • j/k: navigate • e/c: all • /: search • q: quit", applyHint)
+		}
+	} else {
+		help = "j/k: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • q: quit"
+	}
 	b.WriteString(helpStyle.Render(help))
 
 	return appStyle.Render(b.String())
