@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-dark.svg" alt="Terra-Prism Logo" width="400">
+  <img src="assets/logo-dark.svg?v=2" alt="Terra-Prism Logo" width="400">
 </p>
 
 <p align="center">
