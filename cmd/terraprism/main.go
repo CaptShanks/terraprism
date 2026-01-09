@@ -9,13 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CaptShanks/terraprism/internal/history"
 	"github.com/CaptShanks/terraprism/internal/parser"
 	"github.com/CaptShanks/terraprism/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.1.0"
+const version = "0.2.1"
 
 var (
 	printMode  = false
@@ -28,8 +29,17 @@ func main() {
 	args := os.Args[1:]
 
 	// Parse global flags first (before subcommand)
+	// Don't consume -h/--help if it comes after a subcommand
 	var remaining []string
+	subcommandFound := false
 	for i := 0; i < len(args); i++ {
+		// Check if this is a subcommand
+		if !subcommandFound && (args[i] == "apply" || args[i] == "destroy" || args[i] == "plan" || args[i] == "history") {
+			subcommandFound = true
+			remaining = append(remaining, args[i:]...)
+			break
+		}
+
 		switch args[i] {
 		case "--tofu":
 			useTofu = true
@@ -59,10 +69,16 @@ func main() {
 	if len(remaining) > 0 {
 		switch remaining[0] {
 		case "apply":
-			runApplyMode(remaining[1:])
+			runApplyMode(remaining[1:], false)
+			return
+		case "destroy":
+			runApplyMode(remaining[1:], true)
 			return
 		case "plan":
 			runPlanMode(remaining[1:])
+			return
+		case "history":
+			runHistoryMode(remaining[1:])
 			return
 		}
 	}
@@ -72,7 +88,7 @@ func main() {
 }
 
 // runApplyMode runs terraform/tofu plan, shows TUI, and optionally applies
-func runApplyMode(args []string) {
+func runApplyMode(args []string, isDestroy bool) {
 	var tfArgs []string
 
 	// Parse args (only -- and help at this point, global flags already parsed)
@@ -93,12 +109,29 @@ func runApplyMode(args []string) {
 	// Detect terraform or tofu
 	tfCmd := detectTFCommand()
 
+	// Determine command name for history
+	commandName := "apply"
+	if isDestroy {
+		commandName = "destroy"
+		// Add -destroy flag if not already present
+		hasDestroy := false
+		for _, arg := range tfArgs {
+			if arg == "-destroy" {
+				hasDestroy = true
+				break
+			}
+		}
+		if !hasDestroy {
+			tfArgs = append([]string{"-destroy"}, tfArgs...)
+		}
+	}
+
 	// Create temp file for plan
 	tmpDir := os.TempDir()
 	planFile := filepath.Join(tmpDir, fmt.Sprintf("terraprism-%d.tfplan", os.Getpid()))
 	defer os.Remove(planFile)
 
-	fmt.Printf("🔺 Terra-Prism: Running %s plan... ", tfCmd)
+	fmt.Printf("Terra-Prism: Running %s plan... ", tfCmd)
 
 	// Run terraform/tofu plan
 	planArgs := append([]string{"plan", "-out=" + planFile, "-no-color"}, tfArgs...)
@@ -107,12 +140,19 @@ func runApplyMode(args []string) {
 	// Capture both stdout and stderr
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Println("❌")
+		fmt.Println("FAILED")
 		fmt.Fprintf(os.Stderr, "\n%s plan failed:\n%s\n", tfCmd, string(output))
 		os.Exit(1)
 	}
 
-	fmt.Println("✅")
+	fmt.Println("OK")
+
+	// Save plan output to history
+	historyHeader := history.CreateHistoryHeader("plan", tfCmd, tfArgs)
+	historyPath, historyErr := history.CreateHistoryFile(commandName, historyHeader+string(output))
+	if historyErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to save history: %v\n", historyErr)
+	}
 
 	// Parse the plan
 	plan, err := parser.Parse(string(output))
@@ -122,7 +162,10 @@ func runApplyMode(args []string) {
 	}
 
 	if len(plan.Resources) == 0 {
-		fmt.Println("✅ No changes. Infrastructure is up-to-date.")
+		fmt.Println("No changes. Infrastructure is up-to-date.")
+		if historyPath != "" {
+			_, _ = history.UpdateFilenameWithStatus(historyPath, "nochanges")
+		}
 		os.Exit(0)
 	}
 
@@ -144,21 +187,41 @@ func runApplyMode(args []string) {
 
 	// Check if user wants to apply
 	if m, ok := finalModel.(tui.Model); ok && m.ShouldApply() {
-		fmt.Printf("\n🚀 Applying plan with %s...\n\n", tfCmd)
+		fmt.Printf("\nApplying plan with %s...\n\n", tfCmd)
+
+		// Append apply start to history
+		if historyPath != "" {
+			_ = history.AppendToHistoryFile(historyPath, "\n\n--- APPLY OUTPUT ---\n\n")
+		}
 
 		applyCmd := exec.Command(tfCmd, "apply", planFile)
 		applyCmd.Stdout = os.Stdout
 		applyCmd.Stderr = os.Stderr
 		applyCmd.Stdin = os.Stdin
 
-		if err := applyCmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "\n❌ Apply failed: %v\n", err)
+		applyErr := applyCmd.Run()
+
+		if applyErr != nil {
+			fmt.Fprintf(os.Stderr, "\nApply failed: %v\n", applyErr)
+			if historyPath != "" {
+				footer := history.CreateApplyResultFooter(false, applyErr)
+				_ = history.AppendToHistoryFile(historyPath, footer)
+				_, _ = history.UpdateFilenameWithStatus(historyPath, history.StatusFailed)
+			}
 			os.Exit(1)
 		}
 
-		fmt.Println("\n✅ Apply complete!")
+		fmt.Println("\nApply complete!")
+		if historyPath != "" {
+			footer := history.CreateApplyResultFooter(true, nil)
+			_ = history.AppendToHistoryFile(historyPath, footer)
+			_, _ = history.UpdateFilenameWithStatus(historyPath, history.StatusSuccess)
+		}
 	} else {
-		fmt.Println("\n👋 Apply cancelled.")
+		fmt.Println("\nApply cancelled.")
+		if historyPath != "" {
+			_, _ = history.UpdateFilenameWithStatus(historyPath, history.StatusCancelled)
+		}
 	}
 }
 
@@ -181,7 +244,7 @@ func runPlanMode(args []string) {
 
 	tfCmd := detectTFCommand()
 
-	fmt.Printf("🔺 Terra-Prism: Running %s plan... ", tfCmd)
+	fmt.Printf("Terra-Prism: Running %s plan... ", tfCmd)
 
 	planArgs := append([]string{"plan", "-no-color"}, tfArgs...)
 	cmd := exec.Command(tfCmd, planArgs...)
@@ -189,12 +252,19 @@ func runPlanMode(args []string) {
 	// Capture both stdout and stderr
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Println("❌")
+		fmt.Println("FAILED")
 		fmt.Fprintf(os.Stderr, "\n%s plan failed:\n%s\n", tfCmd, string(output))
 		os.Exit(1)
 	}
 
-	fmt.Println("✅")
+	fmt.Println("OK")
+
+	// Save plan output to history
+	historyHeader := history.CreateHistoryHeader("plan", tfCmd, tfArgs)
+	_, historyErr := history.CreateHistoryFile("plan", historyHeader+string(output))
+	if historyErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to save history: %v\n", historyErr)
+	}
 
 	plan, err := parser.Parse(string(output))
 	if err != nil {
@@ -203,7 +273,7 @@ func runPlanMode(args []string) {
 	}
 
 	if len(plan.Resources) == 0 {
-		fmt.Println("✅ No changes. Infrastructure is up-to-date.")
+		fmt.Println("No changes. Infrastructure is up-to-date.")
 		os.Exit(0)
 	}
 
@@ -218,6 +288,101 @@ func runPlanMode(args []string) {
 		fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runHistoryMode lists or manages history files
+func runHistoryMode(args []string) {
+	filterCommand := ""
+
+	// Check for help first
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			printHistoryUsage()
+			os.Exit(0)
+		}
+	}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--plan", "-p":
+			filterCommand = "plan"
+		case "--apply", "-a":
+			filterCommand = "apply"
+		case "--destroy", "-d":
+			filterCommand = "destroy"
+		case "--clear":
+			clearHistory()
+			return
+		}
+	}
+
+	entries, err := history.ListEntries(filterCommand)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading history: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(entries) == 0 {
+		histDir, _ := history.GetHistoryDir()
+		fmt.Printf("No history files found in %s\n", histDir)
+		if filterCommand != "" {
+			fmt.Printf("(filtered by: %s)\n", filterCommand)
+		}
+		return
+	}
+
+	histDir, _ := history.GetHistoryDir()
+	fmt.Printf("History files in %s:\n\n", histDir)
+	fmt.Println("TIMESTAMP            COMMAND   STATUS       FILENAME")
+	fmt.Println(strings.Repeat("-", 80))
+
+	for _, entry := range entries {
+		fmt.Println(history.FormatEntry(entry))
+	}
+
+	fmt.Printf("\nTotal: %d entries\n", len(entries))
+}
+
+// clearHistory removes all history files
+func clearHistory() {
+	histDir, err := history.GetHistoryDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting history directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	entries, err := history.ListEntries("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading history: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(entries) == 0 {
+		fmt.Println("No history files to clear.")
+		return
+	}
+
+	fmt.Printf("This will delete %d history files from %s\n", len(entries), histDir)
+	fmt.Print("Are you sure? (y/N): ")
+
+	var response string
+	_, _ = fmt.Scanln(&response)
+
+	if strings.ToLower(response) != "y" {
+		fmt.Println("Cancelled.")
+		return
+	}
+
+	deleted := 0
+	for _, entry := range entries {
+		if err := os.Remove(entry.Path); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to delete %s: %v\n", entry.Filename, err)
+		} else {
+			deleted++
+		}
+	}
+
+	fmt.Printf("Deleted %d history files.\n", deleted)
 }
 
 // detectTFCommand returns "terraform" or "tofu" based on flags and availability
@@ -314,13 +479,15 @@ func runViewMode(args []string) {
 }
 
 func printUsage() {
-	fmt.Printf(`terraprism %s - Interactive Terraform/OpenTofu plan viewer 🔺✨
+	fmt.Printf(`terraprism %s - Interactive Terraform/OpenTofu plan viewer
 
 USAGE:
     terraform plan -no-color | terraprism        # Pipe plan output
     terraprism <plan-file>                       # Read from file
     terraprism [options] plan [-- tf-args]       # Run plan and view
     terraprism [options] apply [-- tf-args]      # Run plan, view, and apply
+    terraprism [options] destroy [-- tf-args]    # Run destroy plan and apply
+    terraprism history [options]                 # List history files
 
 DESCRIPTION:
     Terra-Prism provides an interactive terminal UI for viewing Terraform and
@@ -330,6 +497,8 @@ COMMANDS:
     (none)      View mode - pipe or file input
     plan        Run terraform/tofu plan and view interactively
     apply       Run plan, review in TUI, press 'a' to apply
+    destroy     Run destroy plan, review in TUI, press 'a' to destroy
+    history     List plan/apply history files
 
 GLOBAL OPTIONS:
     -h, --help      Show this help
@@ -342,11 +511,9 @@ VIEW OPTIONS:
     -p, --print     Print mode (no TUI)
 
 CONTROLS:
-    ↑/k         Move cursor up
-    ↓/j         Move cursor down
+    j/k         Move cursor up/down
     Enter/Space Toggle expand/collapse
-    l/→         Expand current resource
-    h/←/⌫       Collapse current resource
+    l/h         Expand/collapse current resource
     d/u         Half page down/up
     gg/G        Go to first/last resource
     e/c         Expand/collapse all
@@ -354,6 +521,10 @@ CONTROLS:
     n/N         Next/previous match
     a           Apply (only in apply mode)
     q/Esc       Quit
+
+HISTORY:
+    All plan and apply outputs are saved to ~/.terraprism/
+    Use 'terraprism history' to list them.
 
 EXAMPLES:
     # View piped plan
@@ -365,17 +536,23 @@ EXAMPLES:
     # Run plan, review, and apply
     terraprism apply
 
+    # Destroy resources
+    terraprism destroy
+
     # Use tofu instead of terraform
     terraprism --tofu apply
 
     # Pass extra args to terraform/tofu
-    terraprism --tofu apply -- -target=module.vpc -var="env=prod"
+    terraprism apply -- -target=module.vpc -var="env=prod"
+
+    # View history
+    terraprism history
 
 `, version)
 }
 
 func printApplyUsage() {
-	fmt.Printf(`terraprism apply - Run plan, review, and apply 🔺✨
+	fmt.Printf(`terraprism apply - Run plan, review, and apply
 
 USAGE:
     terraprism [--tofu] apply [-- terraform-args]
@@ -383,6 +560,8 @@ USAGE:
 DESCRIPTION:
     Runs terraform/tofu plan, displays in interactive TUI for review,
     then applies if you press 'a'.
+
+    All output is saved to ~/.terraprism/ for history.
 
 GLOBAL OPTIONS:
     --tofu      Use tofu instead of terraform
@@ -402,6 +581,31 @@ EXAMPLES:
     terraprism --tofu apply
     terraprism apply -- -target=module.vpc
     terraprism --tofu apply -- -var="env=prod"
+
+`)
+}
+
+func printHistoryUsage() {
+	fmt.Printf(`terraprism history - List plan/apply history
+
+USAGE:
+    terraprism history [options]
+
+DESCRIPTION:
+    Lists all plan and apply history files stored in ~/.terraprism/
+
+OPTIONS:
+    -h, --help      Show this help
+    -p, --plan      Show only plan files
+    -a, --apply     Show only apply files
+    -d, --destroy   Show only destroy files
+    --clear         Delete all history files
+
+EXAMPLES:
+    terraprism history              # List all history
+    terraprism history --plan       # List only plans
+    terraprism history --apply      # List only applies
+    terraprism history --clear      # Clear all history
 
 `)
 }

@@ -175,6 +175,29 @@ terraprism --light plan.txt  # Force light mode
 -p, --print     Print colored output without interactive TUI
 --light         Force light color scheme (Catppuccin Latte)
 --dark          Force dark color scheme (Catppuccin Mocha)
+--tofu          Use OpenTofu instead of Terraform
+```
+
+## History
+
+All plan and apply outputs are automatically saved to `~/.terraprism/` for future reference.
+
+### File Naming
+
+Files are named with the format: `YYYY-MM-DD_HH-MM-SS_<command>[_<status>].txt`
+
+- `plan` - Plan-only commands
+- `apply` - Apply commands (status: success, failed, cancelled)
+- `destroy` - Destroy commands (status: success, failed, cancelled)
+
+### Managing History
+
+```bash
+terraprism history              # List all history files
+terraprism history --plan       # List only plan files
+terraprism history --apply      # List only apply files
+terraprism history --destroy    # List only destroy files
+terraprism history --clear      # Delete all history files
 ```
 
 ## Why Terra-Prism?
