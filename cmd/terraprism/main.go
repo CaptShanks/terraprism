@@ -31,11 +31,9 @@ func main() {
 	// Parse global flags first (before subcommand)
 	// Don't consume -h/--help if it comes after a subcommand
 	var remaining []string
-	subcommandFound := false
 	for i := 0; i < len(args); i++ {
-		// Check if this is a subcommand
-		if !subcommandFound && (args[i] == "apply" || args[i] == "destroy" || args[i] == "plan" || args[i] == "history") {
-			subcommandFound = true
+		// Check if this is a subcommand - pass remaining args as-is
+		if args[i] == "apply" || args[i] == "destroy" || args[i] == "plan" || args[i] == "history" {
 			remaining = append(remaining, args[i:]...)
 			break
 		}
