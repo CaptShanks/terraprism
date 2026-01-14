@@ -33,7 +33,7 @@ func main() {
 	var remaining []string
 	for i := 0; i < len(args); i++ {
 		// Check if this is a subcommand - pass remaining args as-is
-		if args[i] == "apply" || args[i] == "destroy" || args[i] == "plan" || args[i] == "history" {
+		if args[i] == "apply" || args[i] == "destroy" || args[i] == "plan" || args[i] == "history" || args[i] == "version" {
 			remaining = append(remaining, args[i:]...)
 			break
 		}
@@ -49,7 +49,7 @@ func main() {
 			printUsage()
 			os.Exit(0)
 		case "-v", "--version":
-			fmt.Printf("terraprism %s\n", version)
+			runVersionMode()
 			os.Exit(0)
 		default:
 			remaining = append(remaining, args[i])
@@ -77,6 +77,9 @@ func main() {
 			return
 		case "history":
 			runHistoryMode(remaining[1:])
+			return
+		case "version":
+			runVersionMode()
 			return
 		}
 	}
@@ -398,6 +401,21 @@ func detectTFCommand() string {
 	return "terraform" // Default, will error if not found
 }
 
+// runVersionMode displays terraprism version and terraform/tofu version
+func runVersionMode() {
+	fmt.Printf("terraprism v%s\n\n", version)
+
+	tfCmd := detectTFCommand()
+	fmt.Printf("%s version:\n", tfCmd)
+
+	cmd := exec.Command(tfCmd, "version")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s not found or failed to run\n", tfCmd)
+	}
+}
+
 // runViewMode is the default pipe/file view mode
 func runViewMode(args []string) {
 	var inputFile string
@@ -497,6 +515,7 @@ COMMANDS:
     apply       Run plan, review in TUI, press 'a' to apply
     destroy     Run destroy plan, review in TUI, press 'a' to destroy
     history     List plan/apply history files
+    version     Show terraprism and terraform/tofu versions
 
 GLOBAL OPTIONS:
     -h, --help      Show this help
