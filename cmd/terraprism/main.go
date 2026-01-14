@@ -16,7 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.4.0"
+const version = "0.5.0"
 
 var (
 	printMode  = false
@@ -291,10 +291,8 @@ func runPlanMode(args []string) {
 	}
 }
 
-// runHistoryMode lists or manages history files
+// runHistoryMode handles history subcommands: list, view
 func runHistoryMode(args []string) {
-	filterCommand := ""
-
 	// Check for help first
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
@@ -302,6 +300,46 @@ func runHistoryMode(args []string) {
 			os.Exit(0)
 		}
 	}
+
+	// No args - show history help
+	if len(args) == 0 {
+		printHistoryUsage()
+		os.Exit(0)
+	}
+
+	// Handle subcommands
+	switch args[0] {
+	case "list":
+		runHistoryList(args[1:])
+	case "view":
+		runHistoryView(args[1:])
+	case "--clear":
+		clearHistory()
+	default:
+		// Check if it's a number (shorthand for view)
+		if isNumeric(args[0]) {
+			runHistoryView(args)
+		} else {
+			fmt.Fprintf(os.Stderr, "Unknown history subcommand: %s\n", args[0])
+			printHistoryUsage()
+			os.Exit(1)
+		}
+	}
+}
+
+// isNumeric checks if a string is a positive integer
+func isNumeric(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
+// runHistoryList lists history files
+func runHistoryList(args []string) {
+	filterCommand := ""
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -334,14 +372,89 @@ func runHistoryMode(args []string) {
 
 	histDir, _ := history.GetHistoryDir()
 	fmt.Printf("History files in %s:\n\n", histDir)
-	fmt.Println("TIMESTAMP            COMMAND   STATUS       FILENAME")
-	fmt.Println(strings.Repeat("-", 80))
+	fmt.Println("  #  TIMESTAMP            COMMAND   STATUS       FILENAME")
+	fmt.Println(strings.Repeat("-", 85))
 
-	for _, entry := range entries {
-		fmt.Println(history.FormatEntry(entry))
+	for i, entry := range entries {
+		fmt.Printf("%3d  %s\n", i+1, history.FormatEntry(entry))
 	}
 
 	fmt.Printf("\nTotal: %d entries\n", len(entries))
+	fmt.Println("\nUse 'terraprism history view <#>' to view a specific entry")
+}
+
+// runHistoryView opens a history file in the TUI
+func runHistoryView(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: terraprism history view <index|filename>")
+		fmt.Fprintln(os.Stderr, "  index: 1 = most recent, 2 = second most recent, etc.")
+		fmt.Fprintln(os.Stderr, "  filename: exact filename from history list")
+		os.Exit(1)
+	}
+
+	target := args[0]
+	var filePath string
+
+	// Check if it's a number (index)
+	if isNumeric(target) {
+		var index int
+		_, _ = fmt.Sscanf(target, "%d", &index)
+		if index < 1 {
+			fmt.Fprintln(os.Stderr, "Index must be 1 or greater")
+			os.Exit(1)
+		}
+
+		entries, err := history.ListEntries("")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading history: %v\n", err)
+			os.Exit(1)
+		}
+
+		if index > len(entries) {
+			fmt.Fprintf(os.Stderr, "Index %d out of range (only %d entries)\n", index, len(entries))
+			os.Exit(1)
+		}
+
+		filePath = entries[index-1].Path
+	} else {
+		// It's a filename - find the full path
+		histDir, err := history.GetHistoryDir()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting history directory: %v\n", err)
+			os.Exit(1)
+		}
+		filePath = filepath.Join(histDir, target)
+	}
+
+	// Read the file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Parse and display in TUI
+	plan, err := parser.Parse(string(content))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing plan: %v\n", err)
+		os.Exit(1)
+	}
+
+	if printMode {
+		tui.PrintPlan(plan)
+		return
+	}
+
+	p := tea.NewProgram(
+		tui.NewModel(plan),
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
+
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // clearHistory removes all history files
@@ -514,7 +627,7 @@ COMMANDS:
     plan        Run terraform/tofu plan and view interactively
     apply       Run plan, review in TUI, press 'a' to apply
     destroy     Run destroy plan, review in TUI, press 'a' to destroy
-    history     List plan/apply history files
+    history     View and manage plan/apply history
     version     Show terraprism and terraform/tofu versions
 
 GLOBAL OPTIONS:
@@ -603,26 +716,35 @@ EXAMPLES:
 }
 
 func printHistoryUsage() {
-	fmt.Printf(`terraprism history - List plan/apply history
+	fmt.Printf(`terraprism history - Manage plan/apply history
 
 USAGE:
-    terraprism history [options]
+    terraprism history <subcommand> [options]
 
 DESCRIPTION:
-    Lists all plan and apply history files stored in ~/.terraprism/
+    View and manage plan/apply history files stored in ~/.terraprism/
 
-OPTIONS:
-    -h, --help      Show this help
+SUBCOMMANDS:
+    list            List all history files
+    view <#|file>   View a history file in the TUI
+                    # = index (1 = most recent)
+                    file = exact filename
+
+LIST OPTIONS:
     -p, --plan      Show only plan files
     -a, --apply     Show only apply files
     -d, --destroy   Show only destroy files
     --clear         Delete all history files
 
 EXAMPLES:
-    terraprism history              # List all history
-    terraprism history --plan       # List only plans
-    terraprism history --apply      # List only applies
-    terraprism history --clear      # Clear all history
+    terraprism history list              # List all history
+    terraprism history list --plan       # List only plans
+    terraprism history list --apply      # List only applies
+    terraprism history list --clear      # Clear all history
+    terraprism history view 1            # View most recent entry
+    terraprism history view 3            # View 3rd most recent
+    terraprism history 1                 # Shorthand for 'view 1'
+    terraprism history view 2025-01-14_10-30-00_plan.txt
 
 `)
 }
