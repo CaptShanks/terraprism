@@ -22,16 +22,21 @@ const (
 	StatusFailed = "failed"
 	// StatusCancelled indicates apply was cancelled
 	StatusCancelled = "cancelled"
+
+	// MaxHistoryFiles is the maximum number of history files to keep
+	// Older files are automatically cleaned up
+	MaxHistoryFiles = 100
 )
 
 // Entry represents a history file entry
 type Entry struct {
-	Path      string
-	Timestamp time.Time
-	Project   string // directory/project name
-	Command   string // plan, apply, destroy
-	Status    string // pending, success, failed, cancelled (for apply/destroy)
-	Filename  string
+	Path       string
+	Timestamp  time.Time
+	Project    string // directory/project name
+	Command    string // plan, apply, destroy
+	Status     string // pending, success, failed, cancelled (for apply/destroy)
+	Filename   string
+	WorkingDir string // full absolute path of terraform project
 }
 
 // GetHistoryDir returns the path to the history directory
@@ -150,6 +155,33 @@ func UpdateFilenameWithStatus(oldPath string, status string) (string, error) {
 	return newPath, nil
 }
 
+// extractWorkingDir reads the first few lines of a history file to extract the working directory
+func extractWorkingDir(filePath string) string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	// Read first 512 bytes which should contain the header
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil || n == 0 {
+		return ""
+	}
+
+	content := string(buf[:n])
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Working Dir:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Working Dir:"))
+		}
+	}
+
+	return ""
+}
+
 // ListEntries returns all history entries, sorted by timestamp (newest first)
 func ListEntries(filterCommand string) ([]Entry, error) {
 	dir, err := GetHistoryDir()
@@ -181,6 +213,9 @@ func ListEntries(filterCommand string) ([]Entry, error) {
 		entry.Path = filepath.Join(dir, f.Name())
 		entry.Filename = f.Name()
 
+		// Extract working directory from file header
+		entry.WorkingDir = extractWorkingDir(entry.Path)
+
 		// Filter by command if specified
 		if filterCommand != "" && entry.Command != filterCommand {
 			continue
@@ -195,6 +230,28 @@ func ListEntries(filterCommand string) ([]Entry, error) {
 	})
 
 	return entries, nil
+}
+
+// CleanupOldFiles removes old history files if count exceeds MaxHistoryFiles
+func CleanupOldFiles() (int, error) {
+	entries, err := ListEntries("")
+	if err != nil {
+		return 0, err
+	}
+
+	if len(entries) <= MaxHistoryFiles {
+		return 0, nil
+	}
+
+	// Entries are sorted newest first, so delete from the end
+	deleted := 0
+	for i := MaxHistoryFiles; i < len(entries); i++ {
+		if err := os.Remove(entries[i].Path); err == nil {
+			deleted++
+		}
+	}
+
+	return deleted, nil
 }
 
 // parseFilename parses a history filename into an Entry
@@ -267,7 +324,16 @@ func parseFilename(filename string) (Entry, error) {
 	}, nil
 }
 
-// FormatEntry formats an entry for display
+// TruncatePath truncates a path from the left, keeping the rightmost portion
+func TruncatePath(path string, maxLen int) string {
+	if len(path) <= maxLen {
+		return path
+	}
+	// Keep the rightmost portion with "..." prefix
+	return "..." + path[len(path)-maxLen+3:]
+}
+
+// FormatEntry formats an entry for display (basic format without path)
 func FormatEntry(e Entry) string {
 	status := ""
 	if e.Status != "" {
@@ -300,7 +366,38 @@ func FormatEntry(e Entry) string {
 	)
 }
 
+// FormatEntryWithPath formats an entry with the working directory path
+func FormatEntryWithPath(e Entry) string {
+	status := ""
+	if e.Status != "" {
+		switch e.Status {
+		case StatusSuccess:
+			status = "[SUCCESS]"
+		case StatusFailed:
+			status = "[FAILED]"
+		case StatusCancelled:
+			status = "[CANCELLED]"
+		case StatusPending:
+			status = "[PENDING]"
+		}
+	}
+
+	path := e.WorkingDir
+	if path == "" {
+		path = "-"
+	}
+	path = TruncatePath(path, 40)
+
+	return fmt.Sprintf("%s  %-7s  %-12s  %s",
+		e.Timestamp.Format("2006-01-02 15:04"),
+		e.Command,
+		status,
+		path,
+	)
+}
+
 // GetWorkingDir returns the current working directory name for context
+// GetWorkingDir returns the current working directory basename for context
 func GetWorkingDir() string {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -309,9 +406,18 @@ func GetWorkingDir() string {
 	return filepath.Base(wd)
 }
 
+// GetFullWorkingDir returns the full absolute path of the current working directory
+func GetFullWorkingDir() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "unknown"
+	}
+	return wd
+}
+
 // CreateHistoryHeader creates a header for the history file
 func CreateHistoryHeader(command string, tfCmd string, args []string) string {
-	wd := GetWorkingDir()
+	wd := GetFullWorkingDir() // Use full path for history
 	now := time.Now()
 
 	header := fmt.Sprintf(`================================================================================

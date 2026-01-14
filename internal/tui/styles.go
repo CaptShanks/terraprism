@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 )
@@ -272,4 +274,81 @@ func GetActionColor(action string) lipgloss.Color {
 	default:
 		return updateColor
 	}
+}
+
+// FormatStatusColored returns a color-styled status string for CLI output
+func FormatStatusColored(status string) string {
+	if status == "" {
+		return ""
+	}
+
+	var style lipgloss.Style
+	var label string
+
+	switch status {
+	case "success":
+		label = "[SUCCESS]"
+		style = lipgloss.NewStyle().Foreground(createColor) // green
+	case "failed":
+		label = "[FAILED]"
+		style = lipgloss.NewStyle().Foreground(destroyColor) // red
+	case "cancelled":
+		label = "[CANCELLED]"
+		style = lipgloss.NewStyle().Foreground(updateColor) // yellow/orange
+	case "pending":
+		label = "[PENDING]"
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab387")) // orange
+	case "nochanges":
+		return ""
+	default:
+		return ""
+	}
+
+	return style.Render(label)
+}
+
+// FormatHistoryEntryColored formats a history entry with colored status for CLI output
+func FormatHistoryEntryColored(timestamp, command, status, path string) string {
+	// Command with color (pad first, then color)
+	cmdPadded := fmt.Sprintf("%-7s", command)
+	cmdStyle := lipgloss.NewStyle()
+	switch command {
+	case "apply":
+		cmdStyle = cmdStyle.Foreground(createColor)
+	case "destroy":
+		cmdStyle = cmdStyle.Foreground(destroyColor)
+	case "plan":
+		cmdStyle = cmdStyle.Foreground(lipgloss.Color("#89b4fa")) // blue
+	}
+	cmdColored := cmdStyle.Render(cmdPadded)
+
+	// Status with color (pad the label first, then color)
+	var statusColored string
+	statusPadded := fmt.Sprintf("%-12s", "") // default empty padding
+	switch status {
+	case "success":
+		statusPadded = fmt.Sprintf("%-12s", "[SUCCESS]")
+		statusColored = lipgloss.NewStyle().Foreground(createColor).Render(statusPadded)
+	case "failed":
+		statusPadded = fmt.Sprintf("%-12s", "[FAILED]")
+		statusColored = lipgloss.NewStyle().Foreground(destroyColor).Render(statusPadded)
+	case "cancelled":
+		statusPadded = fmt.Sprintf("%-12s", "[CANCELLED]")
+		statusColored = lipgloss.NewStyle().Foreground(updateColor).Render(statusPadded)
+	case "pending":
+		statusPadded = fmt.Sprintf("%-12s", "[PENDING]")
+		statusColored = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab387")).Render(statusPadded)
+	default:
+		statusColored = statusPadded // no color, just spaces
+	}
+
+	// Pad path to 40 chars for consistent line width
+	pathPadded := fmt.Sprintf("%-40s", path)
+
+	return fmt.Sprintf("%s  %s  %s  %s",
+		timestamp,
+		cmdColored,
+		statusColored,
+		pathPadded,
+	)
 }

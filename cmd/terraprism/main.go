@@ -16,7 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.5.0"
+const version = "0.6.0"
 
 var (
 	printMode  = false
@@ -155,6 +155,11 @@ func runApplyMode(args []string, isDestroy bool) {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to save history: %v\n", historyErr)
 	}
 
+	// Cleanup old history files
+	if deleted, _ := history.CleanupOldFiles(); deleted > 0 {
+		fmt.Fprintf(os.Stderr, "Cleaned up %d old history files\n", deleted)
+	}
+
 	// Parse the plan
 	plan, err := parser.Parse(string(output))
 	if err != nil {
@@ -265,6 +270,11 @@ func runPlanMode(args []string) {
 	_, historyErr := history.CreateHistoryFile("plan", historyHeader+string(output))
 	if historyErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to save history: %v\n", historyErr)
+	}
+
+	// Cleanup old history files
+	if deleted, _ := history.CleanupOldFiles(); deleted > 0 {
+		fmt.Fprintf(os.Stderr, "Cleaned up %d old history files\n", deleted)
 	}
 
 	plan, err := parser.Parse(string(output))
@@ -378,15 +388,27 @@ func runHistoryList(args []string) {
 
 	histDir, _ := history.GetHistoryDir()
 	fmt.Printf("History files in %s:\n\n", histDir)
-	// Header matches data format: %3d (index) + FormatEntry (%s %-20s %-8s %-12s)
-	fmt.Printf("%3s  %-19s  %-20s  %-8s  %-12s\n", "#", "TIMESTAMP", "PROJECT", "COMMAND", "STATUS")
-	fmt.Println(strings.Repeat("-", 70))
+	// Header: #(3) + 2 + timestamp(16) + 2 + command(7) + 2 + status(12) + 2 + path(40) = 86
+	fmt.Printf("%3s  %-16s  %-7s  %-12s  %-40s\n", "#", "TIMESTAMP", "COMMAND", "STATUS", "PATH")
+	fmt.Println(strings.Repeat("-", 86))
 
 	for i, entry := range entries {
-		fmt.Printf("%3d  %s\n", i+1, history.FormatEntry(entry))
+		path := entry.WorkingDir
+		if path == "" {
+			path = "-"
+		}
+		path = history.TruncatePath(path, 40)
+
+		formatted := tui.FormatHistoryEntryColored(
+			entry.Timestamp.Format("2006-01-02 15:04"),
+			entry.Command,
+			entry.Status,
+			path,
+		)
+		fmt.Printf("%3d  %s\n", i+1, formatted)
 	}
 
-	fmt.Printf("\nTotal: %d entries\n", len(entries))
+	fmt.Printf("\nTotal: %d entries (max: %d)\n", len(entries), history.MaxHistoryFiles)
 	fmt.Println("\nUse 'terraprism history view <#>' to view a specific entry")
 }
 

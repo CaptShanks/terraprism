@@ -67,7 +67,8 @@ func (m *PickerModel) filterEntries() {
 				entry.Command + " " +
 				entry.Status + " " +
 				entry.Timestamp.Format("2006-01-02 15:04") + " " +
-				entry.Filename,
+				entry.Filename + " " +
+				entry.WorkingDir,
 		)
 
 		// All terms must match (AND logic, like fzf)
@@ -206,9 +207,9 @@ func (m PickerModel) View() string {
 		Foreground(lipgloss.Color("#6c7086")).
 		Bold(true)
 
-	b.WriteString(headerStyle.Render("     TIMESTAMP            PROJECT              COMMAND   STATUS"))
+	b.WriteString(headerStyle.Render("     TIMESTAMP        COMMAND  STATUS        PATH"))
 	b.WriteString("\n")
-	b.WriteString(headerStyle.Render(strings.Repeat("─", 75)))
+	b.WriteString(headerStyle.Render(strings.Repeat("─", 95)))
 	b.WriteString("\n")
 
 	// Entries
@@ -250,41 +251,41 @@ func (m PickerModel) View() string {
 				statusStyle = statusStyle.Foreground(lipgloss.Color("#fab387"))
 			}
 
-			// Truncate/pad project name
-			project := entry.Project
-			if project == "" {
-				project = "-"
+			// Truncate path from left
+			path := entry.WorkingDir
+			if path == "" {
+				path = "-"
 			}
-			if len(project) > 18 {
-				project = project[:15] + "..."
+			if len(path) > 40 {
+				path = "..." + path[len(path)-37:]
 			}
 
-			line := fmt.Sprintf("%s%2d  %s  %-18s  %-8s  %s",
+			line := fmt.Sprintf("%s%2d  %s  %-7s  %-12s  %s",
 				cursor,
 				i+1,
-				entry.Timestamp.Format("2006-01-02 15:04:05"),
-				project,
+				entry.Timestamp.Format("2006-01-02 15:04"),
 				entry.Command,
 				status,
+				path,
 			)
 
 			if i == m.cursor {
 				// Pad the line for full-width highlight
-				if len(line) < 75 {
-					line = line + strings.Repeat(" ", 75-len(line))
+				if len(line) < 95 {
+					line = line + strings.Repeat(" ", 95-len(line))
 				}
 				b.WriteString(style.Render(line))
 			} else {
 				// Render status with color
-				baseLine := fmt.Sprintf("%s%2d  %s  %-18s  %-8s  ",
+				baseLine := fmt.Sprintf("%s%2d  %s  %-7s  ",
 					cursor,
 					i+1,
-					entry.Timestamp.Format("2006-01-02 15:04:05"),
-					project,
+					entry.Timestamp.Format("2006-01-02 15:04"),
 					entry.Command,
 				)
 				b.WriteString(baseLine)
-				b.WriteString(statusStyle.Render(status))
+				b.WriteString(statusStyle.Render(fmt.Sprintf("%-12s", status)))
+				b.WriteString("  " + path)
 			}
 			b.WriteString("\n")
 		}
