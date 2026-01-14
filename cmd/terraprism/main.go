@@ -352,6 +352,12 @@ func runHistoryList(args []string) {
 		case "--clear":
 			clearHistory()
 			return
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				fmt.Fprintf(os.Stderr, "Unknown option: %s\n", args[i])
+				fmt.Fprintln(os.Stderr, "Use 'terraprism history --help' for usage")
+				os.Exit(1)
+			}
 		}
 	}
 
@@ -372,8 +378,9 @@ func runHistoryList(args []string) {
 
 	histDir, _ := history.GetHistoryDir()
 	fmt.Printf("History files in %s:\n\n", histDir)
-	fmt.Println("  #  TIMESTAMP            COMMAND   STATUS       FILENAME")
-	fmt.Println(strings.Repeat("-", 85))
+	// Header matches data format: %3d (index) + FormatEntry (%s %-20s %-8s %-12s)
+	fmt.Printf("%3s  %-19s  %-20s  %-8s  %-12s\n", "#", "TIMESTAMP", "PROJECT", "COMMAND", "STATUS")
+	fmt.Println(strings.Repeat("-", 70))
 
 	for i, entry := range entries {
 		fmt.Printf("%3d  %s\n", i+1, history.FormatEntry(entry))
@@ -385,45 +392,67 @@ func runHistoryList(args []string) {
 
 // runHistoryView opens a history file in the TUI
 func runHistoryView(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: terraprism history view <index|filename>")
-		fmt.Fprintln(os.Stderr, "  index: 1 = most recent, 2 = second most recent, etc.")
-		fmt.Fprintln(os.Stderr, "  filename: exact filename from history list")
-		os.Exit(1)
-	}
-
-	target := args[0]
 	var filePath string
 
-	// Check if it's a number (index)
-	if isNumeric(target) {
-		var index int
-		_, _ = fmt.Sscanf(target, "%d", &index)
-		if index < 1 {
-			fmt.Fprintln(os.Stderr, "Index must be 1 or greater")
-			os.Exit(1)
-		}
-
+	// No args - interactive picker
+	if len(args) == 0 {
 		entries, err := history.ListEntries("")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading history: %v\n", err)
 			os.Exit(1)
 		}
 
-		if index > len(entries) {
-			fmt.Fprintf(os.Stderr, "Index %d out of range (only %d entries)\n", index, len(entries))
+		if len(entries) == 0 {
+			histDir, _ := history.GetHistoryDir()
+			fmt.Printf("No history files found in %s\n", histDir)
+			os.Exit(0)
+		}
+
+		selectedPath, err := tui.RunPicker(entries)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error running picker: %v\n", err)
 			os.Exit(1)
 		}
 
-		filePath = entries[index-1].Path
-	} else {
-		// It's a filename - find the full path
-		histDir, err := history.GetHistoryDir()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting history directory: %v\n", err)
-			os.Exit(1)
+		if selectedPath == "" {
+			// User cancelled
+			os.Exit(0)
 		}
-		filePath = filepath.Join(histDir, target)
+
+		filePath = selectedPath
+	} else {
+		target := args[0]
+
+		// Check if it's a number (index)
+		if isNumeric(target) {
+			var index int
+			_, _ = fmt.Sscanf(target, "%d", &index)
+			if index < 1 {
+				fmt.Fprintln(os.Stderr, "Index must be 1 or greater")
+				os.Exit(1)
+			}
+
+			entries, err := history.ListEntries("")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading history: %v\n", err)
+				os.Exit(1)
+			}
+
+			if index > len(entries) {
+				fmt.Fprintf(os.Stderr, "Index %d out of range (only %d entries)\n", index, len(entries))
+				os.Exit(1)
+			}
+
+			filePath = entries[index-1].Path
+		} else {
+			// It's a filename - find the full path
+			histDir, err := history.GetHistoryDir()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error getting history directory: %v\n", err)
+				os.Exit(1)
+			}
+			filePath = filepath.Join(histDir, target)
+		}
 	}
 
 	// Read the file
@@ -726,6 +755,7 @@ DESCRIPTION:
 
 SUBCOMMANDS:
     list            List all history files
+    view            Interactive picker to select and view
     view <#|file>   View a history file in the TUI
                     # = index (1 = most recent)
                     file = exact filename
@@ -741,6 +771,7 @@ EXAMPLES:
     terraprism history list --plan       # List only plans
     terraprism history list --apply      # List only applies
     terraprism history list --clear      # Clear all history
+    terraprism history view              # Interactive picker
     terraprism history view 1            # View most recent entry
     terraprism history view 3            # View 3rd most recent
     terraprism history 1                 # Shorthand for 'view 1'

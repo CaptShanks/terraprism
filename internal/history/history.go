@@ -28,6 +28,7 @@ const (
 type Entry struct {
 	Path      string
 	Timestamp time.Time
+	Project   string // directory/project name
 	Command   string // plan, apply, destroy
 	Status    string // pending, success, failed, cancelled (for apply/destroy)
 	Filename  string
@@ -57,13 +58,44 @@ func EnsureHistoryDir() (string, error) {
 }
 
 // GenerateFilename creates a filename for a history entry
-// Format: YYYY-MM-DD_HH-MM-SS_<command>.txt
+// Format: YYYY-MM-DD_HH-MM-SS_<project>_<command>.txt
 func GenerateFilename(command string) string {
 	now := time.Now()
-	return fmt.Sprintf("%s_%s.txt",
+	project := sanitizeProjectName(GetWorkingDir())
+	return fmt.Sprintf("%s_%s_%s.txt",
 		now.Format("2006-01-02_15-04-05"),
+		project,
 		command,
 	)
+}
+
+// sanitizeProjectName makes a project name safe for filenames
+// Underscores MUST be replaced since they're used as filename delimiters
+func sanitizeProjectName(name string) string {
+	// Replace problematic characters with dashes
+	// IMPORTANT: underscores are filename delimiters, so they must be replaced
+	replacer := strings.NewReplacer(
+		"_", "-",
+		" ", "-",
+		"/", "-",
+		"\\", "-",
+		":", "-",
+		".", "-",
+	)
+	name = replacer.Replace(name)
+
+	// Limit length to keep filenames reasonable
+	if len(name) > 30 {
+		name = name[:30]
+	}
+
+	// Prevent project names that match command names (would confuse parser)
+	knownCommands := map[string]bool{"plan": true, "apply": true, "destroy": true}
+	if knownCommands[name] {
+		name = name + "-proj"
+	}
+
+	return name
 }
 
 // CreateHistoryFile creates a new history file and returns its path
@@ -166,7 +198,8 @@ func ListEntries(filterCommand string) ([]Entry, error) {
 }
 
 // parseFilename parses a history filename into an Entry
-// Format: YYYY-MM-DD_HH-MM-SS_<command>[_<status>].txt
+// New format: YYYY-MM-DD_HH-MM-SS_<project>_<command>[_<status>].txt
+// Old format: YYYY-MM-DD_HH-MM-SS_<command>[_<status>].txt (for backwards compatibility)
 func parseFilename(filename string) (Entry, error) {
 	base := strings.TrimSuffix(filename, ".txt")
 	parts := strings.Split(base, "_")
@@ -183,14 +216,52 @@ func parseFilename(filename string) (Entry, error) {
 		return Entry{}, fmt.Errorf("invalid timestamp: %w", err)
 	}
 
-	command := parts[2]
-	status := ""
-	if len(parts) >= 4 {
-		status = parts[3]
+	knownCommands := map[string]bool{"plan": true, "apply": true, "destroy": true}
+
+	var project, command, status string
+
+	// Determine format based on number of parts and content
+	// 3 parts: old format without status (date_time_command)
+	// 4 parts: could be old+status OR new without status - check if parts[3] is a command
+	// 5+ parts: new format with status (date_time_project_command_status)
+	switch len(parts) {
+	case 3:
+		// Old format: date_time_command
+		project = ""
+		command = parts[2]
+		status = ""
+
+	case 4:
+		// Ambiguous: could be old+status OR new without status
+		// If parts[3] is a known command, it's new format (project_command)
+		// Otherwise it's old format (command_status)
+		if knownCommands[parts[3]] {
+			// New format: date_time_project_command
+			project = parts[2]
+			command = parts[3]
+			status = ""
+		} else {
+			// Old format: date_time_command_status
+			project = ""
+			command = parts[2]
+			status = parts[3]
+		}
+
+	default: // 5+ parts
+		// New format: date_time_project_command_status
+		project = parts[2]
+		command = parts[3]
+		status = parts[4]
+	}
+
+	// Validate command is known
+	if !knownCommands[command] {
+		return Entry{}, fmt.Errorf("unknown command: %s", command)
 	}
 
 	return Entry{
 		Timestamp: timestamp,
+		Project:   project,
 		Command:   command,
 		Status:    status,
 	}, nil
@@ -202,21 +273,30 @@ func FormatEntry(e Entry) string {
 	if e.Status != "" {
 		switch e.Status {
 		case StatusSuccess:
-			status = " [SUCCESS]"
+			status = "[SUCCESS]"
 		case StatusFailed:
-			status = " [FAILED]"
+			status = "[FAILED]"
 		case StatusCancelled:
-			status = " [CANCELLED]"
+			status = "[CANCELLED]"
 		case StatusPending:
-			status = " [PENDING]"
+			status = "[PENDING]"
 		}
 	}
 
-	return fmt.Sprintf("%s  %-8s%s  %s",
+	project := e.Project
+	if project == "" {
+		project = "-"
+	}
+	// Truncate long project names for display
+	if len(project) > 20 {
+		project = project[:17] + "..."
+	}
+
+	return fmt.Sprintf("%s  %-20s  %-8s  %-12s",
 		e.Timestamp.Format("2006-01-02 15:04:05"),
+		project,
 		e.Command,
 		status,
-		e.Filename,
 	)
 }
 
