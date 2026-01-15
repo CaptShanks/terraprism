@@ -31,6 +31,8 @@
 - **Auto light/dark mode** - Detects your terminal background
 - **Format support** - Works with Terraform 0.11+ and OpenTofu
 - **Full-line selection** - Clear visual indicator of selected resource
+- **History tracking** - All plans saved with full path, searchable picker
+- **Color-coded CLI** - Commands and status colored in history list
 
 ## Installation
 
@@ -167,11 +169,22 @@ terraprism --dark plan.txt   # Force dark mode
 terraprism --light plan.txt  # Force light mode
 ```
 
+## Commands
+
+```
+terraprism                     # View piped/file input
+terraprism plan                # Run terraform plan and view
+terraprism apply               # Run plan, view, and apply
+terraprism destroy             # Run destroy plan and apply
+terraprism history             # Manage history files
+terraprism version             # Show terraprism and terraform/tofu version
+```
+
 ## Options
 
 ```
 -h, --help      Show help message
--v, --version   Show version
+-v, --version   Show version (includes terraform/tofu version)
 -p, --print     Print colored output without interactive TUI
 --light         Force light color scheme (Catppuccin Latte)
 --dark          Force dark color scheme (Catppuccin Mocha)
@@ -180,25 +193,61 @@ terraprism --light plan.txt  # Force light mode
 
 ## History
 
-All plan and apply outputs are automatically saved to `~/.terraprism/` for future reference.
+All plan and apply outputs are automatically saved to `~/.terraprism/` for future reference. History includes the full working directory path and is color-coded for easy reading.
+
+### Listing History
+
+```bash
+terraprism history list              # List all history files
+terraprism history list --plan       # List only plan files
+terraprism history list --apply      # List only apply files
+terraprism history list --destroy    # List only destroy files
+```
+
+Output shows timestamp, command (colored), status (colored), and full path:
+```
+  #  TIMESTAMP         COMMAND  STATUS        PATH
+--------------------------------------------------------------------------------------
+  1  2026-01-14 12:52  plan                   .../live/com/prod/gen2/gen2eks-a-giprd1
+  2  2026-01-14 10:30  apply    [SUCCESS]     .../modules/vpc
+```
+
+### Viewing History
+
+```bash
+terraprism history view              # Interactive picker with search
+terraprism history view 1            # View most recent entry
+terraprism history view 3            # View 3rd most recent
+terraprism history 1                 # Shorthand for 'view 1'
+```
+
+The interactive picker supports:
+- **j/k** - Navigate up/down
+- **/** - Search (fzf-style, multiple terms)
+- **Enter** - Select and view in TUI
+- **q/Esc** - Cancel
+
+Search by project, command, status, date, or path:
+```
+/myproject apply success    # Find successful applies for myproject
+/2026-01 destroy            # Find January 2026 destroys
+```
 
 ### File Naming
 
-Files are named with the format: `YYYY-MM-DD_HH-MM-SS_<command>[_<status>].txt`
+Files are named: `YYYY-MM-DD_HH-MM-SS_<project>_<command>[_<status>].txt`
 
 - `plan` - Plan-only commands
 - `apply` - Apply commands (status: success, failed, cancelled)
 - `destroy` - Destroy commands (status: success, failed, cancelled)
 
-### Managing History
+### Cleanup
 
 ```bash
-terraprism history              # List all history files
-terraprism history --plan       # List only plan files
-terraprism history --apply      # List only apply files
-terraprism history --destroy    # List only destroy files
-terraprism history --clear      # Delete all history files
+terraprism history list --clear      # Delete all history files
 ```
+
+History is automatically cleaned up when exceeding 100 files (oldest removed first).
 
 ## Why Terra-Prism?
 
