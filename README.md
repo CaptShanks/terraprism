@@ -20,7 +20,9 @@
 
 ---
 
-<!-- ![Terra-Prism demo](assets/demo.gif) -->
+<p align="center">
+  <img src="assets/demo.gif" alt="Terra-Prism Demo" width="800">
+</p>
 
 ## Features
 
@@ -208,8 +210,8 @@ Output shows timestamp, command (colored), status (colored), and full path:
 ```
   #  TIMESTAMP         COMMAND  STATUS        PATH
 --------------------------------------------------------------------------------------
-  1  2026-01-14 12:52  plan                   .../live/com/prod/gen2/gen2eks-a-giprd1
-  2  2026-01-14 10:30  apply    [SUCCESS]     .../modules/vpc
+  1  2026-01-14 12:52  plan                   .../infrastructure/aws/prod/eks-cluster
+  2  2026-01-14 10:30  apply    [SUCCESS]     .../infrastructure/aws/staging/vpc
 ```
 
 ### Viewing History
