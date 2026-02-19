@@ -1,22 +1,33 @@
-MIT License
+Proprietary License
 
-Copyright (c) 2026 terraprism contributors
+Copyright (c) 2026 Shashank Tyagi
+All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Ownership
+The Software and all intellectual property rights therein are and shall remain
+the exclusive property of the copyright holder(s).
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. No Redistribution or Commercial Use
+You may not copy, reproduce, distribute, publish, sublicense, sell, rent, lease,
+lend, or otherwise transfer the Software or any derivative works, in whole or in
+part, whether for profit or not, without prior written permission from the
+copyright holder(s).
 
+3. No Public Disclosure
+You may not disclose the Software, in whole or in part, to any third party
+without prior written permission from the copyright holder(s).
+
+4. Limited Internal Use
+You may use the Software solely for internal evaluation or development purposes.
+Any other use requires prior written permission from the copyright holder(s).
+
+5. Disclaimer of Warranty
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
+6. Limitation of Liability
+IN NO EVENT SHALL THE COPYRIGHT HOLDER(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
