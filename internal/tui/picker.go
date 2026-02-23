@@ -172,6 +172,28 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case key.Matches(msg, key.NewBinding(key.WithKeys("d"))):
+			half := m.visibleRows() / 2
+			if half < 1 {
+				half = 1
+			}
+			m.cursor += half
+			if m.cursor >= len(m.filtered) {
+				m.cursor = len(m.filtered) - 1
+			}
+			return m, nil
+
+		case key.Matches(msg, key.NewBinding(key.WithKeys("u"))):
+			half := m.visibleRows() / 2
+			if half < 1 {
+				half = 1
+			}
+			m.cursor -= half
+			if m.cursor < 0 {
+				m.cursor = 0
+			}
+			return m, nil
+
 		case key.Matches(msg, key.NewBinding(key.WithKeys("g"))):
 			m.cursor = 0
 			return m, nil
@@ -184,6 +206,14 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m PickerModel) visibleRows() int {
+	rows := m.height - 8
+	if rows < 5 {
+		rows = 5
+	}
+	return rows
 }
 
 func (m PickerModel) View() string {
@@ -212,7 +242,7 @@ func (m PickerModel) View() string {
 	b.WriteString(headerStyle.Render(strings.Repeat("─", 95)))
 	b.WriteString("\n")
 
-	// Entries
+	// Entries with scroll window
 	if len(m.filtered) == 0 {
 		noResultStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6c7086")).
@@ -224,7 +254,33 @@ func (m PickerModel) View() string {
 		}
 		b.WriteString("\n")
 	} else {
-		for i, entry := range m.filtered {
+		visibleRows := m.visibleRows()
+		if visibleRows > len(m.filtered) {
+			visibleRows = len(m.filtered)
+		}
+
+		// Determine scroll window
+		startIdx := 0
+		if m.cursor >= visibleRows {
+			startIdx = m.cursor - visibleRows + 1
+		}
+		endIdx := startIdx + visibleRows
+		if endIdx > len(m.filtered) {
+			endIdx = len(m.filtered)
+			startIdx = endIdx - visibleRows
+			if startIdx < 0 {
+				startIdx = 0
+			}
+		}
+
+		if startIdx > 0 {
+			scrollHint := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086"))
+			b.WriteString(scrollHint.Render(fmt.Sprintf("  ↑ %d more entries above", startIdx)))
+			b.WriteString("\n")
+		}
+
+		for i := startIdx; i < endIdx; i++ {
+			entry := m.filtered[i]
 			cursor := "  "
 			style := lipgloss.NewStyle()
 
@@ -236,7 +292,6 @@ func (m PickerModel) View() string {
 					Bold(true)
 			}
 
-			// Format the entry
 			status := ""
 			statusStyle := lipgloss.NewStyle()
 			switch entry.Status {
@@ -251,7 +306,6 @@ func (m PickerModel) View() string {
 				statusStyle = statusStyle.Foreground(lipgloss.Color("#fab387"))
 			}
 
-			// Truncate path from left
 			path := entry.WorkingDir
 			if path == "" {
 				path = "-"
@@ -270,13 +324,11 @@ func (m PickerModel) View() string {
 			)
 
 			if i == m.cursor {
-				// Pad the line for full-width highlight
 				if len(line) < 95 {
 					line = line + strings.Repeat(" ", 95-len(line))
 				}
 				b.WriteString(style.Render(line))
 			} else {
-				// Render status with color
 				baseLine := fmt.Sprintf("%s%2d  %s  %-7s  ",
 					cursor,
 					i+1,
@@ -287,6 +339,12 @@ func (m PickerModel) View() string {
 				b.WriteString(statusStyle.Render(fmt.Sprintf("%-12s", status)))
 				b.WriteString("  " + path)
 			}
+			b.WriteString("\n")
+		}
+
+		if endIdx < len(m.filtered) {
+			scrollHint := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086"))
+			b.WriteString(scrollHint.Render(fmt.Sprintf("  ↓ %d more entries below", len(m.filtered)-endIdx)))
 			b.WriteString("\n")
 		}
 	}
@@ -312,11 +370,11 @@ func (m PickerModel) View() string {
 		b.WriteString("\n")
 		footerStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6c7086"))
-		b.WriteString(footerStyle.Render("j/k: navigate  enter: select  esc: clear filter  q: cancel"))
+		b.WriteString(footerStyle.Render("j/k/↑↓: navigate  d/u: scroll  enter: select  esc: clear filter  q: cancel"))
 	} else {
 		footerStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6c7086"))
-		b.WriteString(footerStyle.Render("j/k: navigate  /: search  enter: select  q: cancel"))
+		b.WriteString(footerStyle.Render("j/k/↑↓: navigate  d/u: scroll  /: search  enter: select  q: cancel"))
 	}
 
 	return b.String()
@@ -325,7 +383,7 @@ func (m PickerModel) View() string {
 // RunPicker runs the interactive history picker and returns the selected path
 func RunPicker(entries []history.Entry) (string, error) {
 	m := NewPickerModel(entries)
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	finalModel, err := p.Run()
 	if err != nil {
