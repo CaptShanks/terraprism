@@ -233,7 +233,68 @@ Terraform will perform the following actions:
         }
     }
 
-Plan: 4 to add, 1 to change, 2 to destroy.
+  # aws_instance.app will be updated in-place
+  ~ resource "aws_instance" "app" {
+        id                           = "i-0abcdef1234567890"
+        instance_type                = "t3.medium"
+      ~ user_data                    = "IyEvYmluL2Jhc2gKc2V0IC1lCgojIEluc3RhbGwgcGFja2FnZXMKYXB0LWdldCB1cGRhdGUKYXB0LWdldCBpbnN0YWxsIC15IG5naW54CnN5c3RlbWN0bCBlbmFibGUgbmdpbngKc3lzdGVtY3RsIHN0YXJ0IG5naW54CgojIENvbmZpZ3VyZSBhcHAKZWNobyAic2VydmVyIHsKICBsaXN0ZW4gODA7CiAgc2VydmVyX25hbWUgZXhhbXBsZS5jb207CiAgcm9vdCAvdmFyL3d3dy9odG1sOwp9IiA+IC9ldGMvbmdpbngvc2l0ZXMtYXZhaWxhYmxlL2RlZmF1bHQKCmVjaG8gIkhlbGxvIFdvcmxkIiA+IC92YXIvd3d3L2h0bWwvaW5kZXguaHRtbA==" -> "IyEvYmluL2Jhc2gKc2V0IC1lCgojIEluc3RhbGwgcGFja2FnZXMKYXB0LWdldCB1cGRhdGUKYXB0LWdldCBpbnN0YWxsIC15IG5naW54IGNlcnRib3QgcHl0aG9uMy1jZXJ0Ym90LW5naW54CnN5c3RlbWN0bCBlbmFibGUgbmdpbngKc3lzdGVtY3RsIHN0YXJ0IG5naW54CgojIENvbmZpZ3VyZSBhcHAKZWNobyAic2VydmVyIHsKICBsaXN0ZW4gNDQzIHNzbDsKICBzZXJ2ZXJfbmFtZSBleGFtcGxlLmNvbTsKICByb290IC92YXIvd3d3L2h0bWw7CiAgc3NsX2NlcnRpZmljYXRlIC9ldGMvbGV0c2VuY3J5cHQvbGl2ZS9leGFtcGxlLmNvbS9mdWxsY2hhaW4ucGVtOwogIHNzbF9jZXJ0aWZpY2F0ZV9rZXkgL2V0Yy9sZXRzZW5jcnlwdC9saXZlL2V4YW1wbGUuY29tL3ByaXZrZXkucGVtOwp9IiA+IC9ldGMvbmdpbngvc2l0ZXMtYXZhaWxhYmxlL2RlZmF1bHQKCmVjaG8gIkhlbGxvIFdvcmxkIHYyIiA+IC92YXIvd3d3L2h0bWwvaW5kZXguaHRtbAoKIyBTZXR1cCBTU0wKY2VydGJvdCAtLW5naW54IC1kIGV4YW1wbGUuY29tIC0tbm9uLWludGVyYWN0aXZlIC0tYWdyZWUtdG9zIC1tIGFkbWluQGV4YW1wbGUuY29t"
+        tags                         = {
+            "Environment" = "production"
+            "Name"        = "app-server"
+        }
+        # (15 unchanged attributes hidden)
+    }
+
+  # helm_release.nginx_ingress will be updated in-place
+  ~ resource "helm_release" "nginx_ingress" {
+        id                         = "nginx-ingress"
+        name                       = "nginx-ingress"
+      ~ values                     = [
+          - <<-EOT
+              controller:
+                replicaCount: 2
+                service:
+                  type: LoadBalancer
+                  annotations:
+                    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 200m
+                    memory: 256Mi
+                config:
+                  use-forwarded-headers: "true"
+                  proxy-buffer-size: "16k"
+                  log-format-upstream: '$remote_addr - $request_id'
+            EOT,
+          + <<-EOT
+              controller:
+                replicaCount: 3
+                service:
+                  type: LoadBalancer
+                  annotations:
+                    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+                    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+                config:
+                  use-forwarded-headers: "true"
+                  proxy-buffer-size: "32k"
+                  log-format-upstream: '$remote_addr - $request_id'
+                  enable-modsecurity: "true"
+            EOT,
+        ]
+        # (8 unchanged attributes hidden)
+    }
+
+Plan: 4 to add, 3 to change, 2 to destroy.
 
 Changes to Outputs:
   + instance_id        = (known after apply)

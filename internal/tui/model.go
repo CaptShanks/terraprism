@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/CaptShanks/terraprism/internal/parser"
 )
@@ -26,7 +29,9 @@ type Model struct {
 	searchQuery   string
 	searchMatches []int
 	currentMatch  int
-	pendingG      bool // Track if 'g' was pressed, waiting for second 'g'
+	pendingG           bool  // Track if 'g' was pressed, waiting for second 'g'
+	resourceLineStarts []int // rendered line offset per resource (populated during render)
+	contentLineCount   int   // total rendered content lines (excluding padding)
 
 	// Apply mode fields
 	applyMode    bool   // Whether apply is available
@@ -149,6 +154,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor--
 			m.updateViewportContent()
 			m.ensureCursorVisible()
+		} else {
+			m.viewport.SetYOffset(m.viewport.YOffset - 1)
 		}
 
 	case "down", "j":
@@ -156,12 +163,14 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor++
 			m.updateViewportContent()
 			m.ensureCursorVisible()
+		} else {
+			m.viewport.SetYOffset(m.viewport.YOffset + 1)
 		}
 
 	case "enter", " ":
 		m.expanded[m.cursor] = !m.expanded[m.cursor]
 		m.updateViewportContent()
-		m.ensureCursorVisible()
+		m.scrollForExpanded()
 
 	case "e":
 		m.expandAll()
@@ -210,7 +219,7 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "l", "right":
 		m.expanded[m.cursor] = true
 		m.updateViewportContent()
-		m.ensureCursorVisible()
+		m.scrollForExpanded()
 
 	case "a":
 		// Apply (only in apply mode)
@@ -319,11 +328,11 @@ func (m *Model) handleGKey() {
 	}
 }
 
-// gotoBottom moves cursor to the last resource
+// gotoBottom moves cursor to the last resource and scrolls so it's visible
 func (m *Model) gotoBottom() {
 	m.cursor = len(m.plan.Resources) - 1
 	m.updateViewportContent()
-	m.viewport.GotoBottom()
+	m.ensureCursorVisible()
 	m.pendingG = false
 }
 
@@ -362,27 +371,18 @@ func (m *Model) ensureCursorVisible() {
 		return
 	}
 
-	// Calculate the line number where the current resource starts
-	lineNum := 0
-	for i := 0; i < m.cursor; i++ {
-		lineNum++ // Resource header line
-		if m.expanded[i] {
-			// Add the content lines for expanded resources
-			lineNum += len(m.plan.Resources[i].RawLines) // includes header + content
-			lineNum++                                    // blank line after expanded resource
-		}
+	if m.cursor < 0 || m.cursor >= len(m.resourceLineStarts) {
+		return
 	}
 
-	// Get current viewport position
+	lineNum := m.resourceLineStarts[m.cursor]
+
 	topLine := m.viewport.YOffset
 	bottomLine := topLine + m.viewport.Height - 1
 
-	// Scroll if cursor is outside visible area
 	if lineNum < topLine {
-		// Cursor is above visible area - scroll up
 		m.viewport.SetYOffset(lineNum)
 	} else if lineNum > bottomLine {
-		// Cursor is below visible area - scroll down
 		newOffset := lineNum - m.viewport.Height + 1
 		if newOffset < 0 {
 			newOffset = 0
@@ -391,10 +391,42 @@ func (m *Model) ensureCursorVisible() {
 	}
 }
 
-func (m Model) renderResources() string {
+// scrollForExpanded ensures the cursor is visible and, when expanded,
+// positions the cursor near the top so the expanded content is visible below.
+func (m *Model) scrollForExpanded() {
+	if !m.ready || m.cursor < 0 || m.cursor >= len(m.resourceLineStarts) {
+		return
+	}
+
+	lineNum := m.resourceLineStarts[m.cursor]
+
+	if m.expanded[m.cursor] {
+		var endLine int
+		if m.cursor+1 < len(m.resourceLineStarts) {
+			endLine = m.resourceLineStarts[m.cursor+1]
+		} else {
+			endLine = m.contentLineCount
+		}
+
+		bottomLine := m.viewport.YOffset + m.viewport.Height - 1
+		if endLine > bottomLine {
+			m.viewport.SetYOffset(lineNum)
+			return
+		}
+	}
+
+	m.ensureCursorVisible()
+}
+
+func (m *Model) renderResources() string {
 	var b strings.Builder
+	lineCount := 0
+
+	m.resourceLineStarts = make([]int, len(m.plan.Resources))
 
 	for i, r := range m.plan.Resources {
+		m.resourceLineStarts[i] = lineCount
+
 		isSelected := i == m.cursor
 		isExpanded := m.expanded[i]
 		isMatch := false
@@ -406,9 +438,7 @@ func (m Model) renderResources() string {
 			}
 		}
 
-		// Render resource line
 		if isSelected {
-			// For selected line, render with full-width background highlight
 			line := m.renderSelectedResourceLine(r, isExpanded, isMatch)
 			b.WriteString(line)
 		} else {
@@ -416,19 +446,505 @@ func (m Model) renderResources() string {
 			b.WriteString(line)
 		}
 		b.WriteString("\n")
+		lineCount++
 
-		// Render full HCL block if expanded
 		if isExpanded && len(r.RawLines) > 1 {
-			for _, line := range r.RawLines[1:] {
-				coloredLine := m.colorizeHCLLine(line, r.Action)
-				b.WriteString(coloredLine)
-				b.WriteString("\n")
-			}
+			before := b.Len()
+			m.renderExpandedContent(&b, r.RawLines[1:], r.Action)
 			b.WriteString("\n")
+			lineCount += strings.Count(b.String()[before:], "\n")
+		}
+	}
+
+	m.contentLineCount = lineCount
+
+	b.WriteString("\n")
+	eolStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086"))
+	b.WriteString(eolStyle.Render("── End of Plan ──"))
+	b.WriteString("\n")
+
+	// Padding after the marker so the viewport has room to scroll
+	// the last resource's expanded content fully into view
+	for i := 0; i < m.viewport.Height; i++ {
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// renderExpandedContent renders the expanded lines for a resource, applying
+// word wrapping, userdata decoding, and YAML/heredoc diff detection.
+func (m Model) renderExpandedContent(b *strings.Builder, lines []string, action parser.Action) {
+	maxWidth := m.viewport.Width
+
+	for idx := 0; idx < len(lines); idx++ {
+		line := lines[idx]
+
+		if decoded, ok := m.tryRenderUserdata(line, action, maxWidth); ok {
+			b.WriteString(decoded)
+			b.WriteString("\n")
+			continue
+		}
+
+		if consumed, rendered := m.tryRenderHeredocDiff(lines, idx, action, maxWidth); consumed > 0 {
+			b.WriteString(rendered)
+			idx += consumed - 1
+			continue
+		}
+
+		coloredLine := m.wrapAndColorize(line, action, maxWidth)
+		b.WriteString(coloredLine)
+		b.WriteString("\n")
+	}
+}
+
+// wrapAndColorize wraps a raw HCL line to the viewport width and colorizes
+// each sub-line, preserving indentation and prefix alignment.
+func (m Model) wrapAndColorize(line string, action parser.Action, maxWidth int) string {
+	if maxWidth <= 0 {
+		return m.colorizeHCLLine(line, action)
+	}
+
+	trimmed := strings.TrimLeft(line, " \t")
+	indent := line[:len(line)-len(trimmed)]
+	indentWidth := utf8.RuneCountInString(indent)
+
+	var rawPrefix, content string
+	lineAction := action
+	switch {
+	case strings.HasPrefix(trimmed, "+ "):
+		rawPrefix = "+ "
+		content = trimmed[2:]
+		lineAction = parser.ActionCreate
+	case strings.HasPrefix(trimmed, "- "):
+		rawPrefix = "- "
+		content = trimmed[2:]
+		lineAction = parser.ActionDestroy
+	case strings.HasPrefix(trimmed, "~ "):
+		rawPrefix = "~ "
+		content = trimmed[2:]
+		lineAction = parser.ActionUpdate
+	default:
+		rawPrefix = "  "
+		content = trimmed
+	}
+
+	prefixWidth := utf8.RuneCountInString(rawPrefix)
+	availableWidth := maxWidth - indentWidth - prefixWidth
+	if availableWidth < 20 || utf8.RuneCountInString(content) <= availableWidth {
+		return m.colorizeHCLLine(line, action)
+	}
+
+	wrapped := wordwrap.String(content, availableWidth)
+	subLines := strings.Split(wrapped, "\n")
+	if len(subLines) <= 1 {
+		return m.colorizeHCLLine(line, action)
+	}
+
+	continuationIndent := indent + strings.Repeat(" ", prefixWidth)
+
+	var b strings.Builder
+	for i, sub := range subLines {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		if i == 0 {
+			reconstructed := indent + rawPrefix + sub
+			b.WriteString(m.colorizeHCLLine(reconstructed, action))
+		} else {
+			b.WriteString(continuationIndent)
+			b.WriteString(m.colorizeHCLContent(strings.TrimSpace(sub), lineAction))
 		}
 	}
 
 	return b.String()
+}
+
+// tryRenderUserdata detects user_data attributes with base64 content and
+// renders them decoded with diff highlighting for changes.
+func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int) (string, bool) {
+	trimmed := strings.TrimLeft(line, " \t")
+	indent := line[:len(line)-len(trimmed)]
+
+	var rawPrefix string
+	content := trimmed
+	lineAction := action
+	switch {
+	case strings.HasPrefix(trimmed, "+ "):
+		rawPrefix = "+ "
+		content = trimmed[2:]
+		lineAction = parser.ActionCreate
+	case strings.HasPrefix(trimmed, "- "):
+		rawPrefix = "- "
+		content = trimmed[2:]
+		lineAction = parser.ActionDestroy
+	case strings.HasPrefix(trimmed, "~ "):
+		rawPrefix = "~ "
+		content = trimmed[2:]
+		lineAction = parser.ActionUpdate
+	default:
+		rawPrefix = "  "
+	}
+
+	eqIdx := strings.Index(content, " = ")
+	if eqIdx < 0 {
+		return "", false
+	}
+	key := strings.TrimSpace(content[:eqIdx])
+	if key != "user_data" && key != "user_data_base64" {
+		return "", false
+	}
+	value := strings.TrimSpace(content[eqIdx+3:])
+
+	var b strings.Builder
+	decodedIndent := indent + strings.Repeat(" ", len(rawPrefix))
+	headerLine := m.colorizeHCLLine(line, action)
+
+	if strings.Contains(value, " -> ") {
+		parts := strings.SplitN(value, " -> ", 2)
+		oldB64 := unquote(strings.TrimSpace(parts[0]))
+		newB64 := unquote(strings.TrimSpace(parts[1]))
+
+		oldDecoded, oldOk := tryBase64Decode(oldB64)
+		newDecoded, newOk := tryBase64Decode(newB64)
+
+		if !oldOk && !newOk {
+			return "", false
+		}
+
+		b.WriteString(headerLine)
+		b.WriteString("\n")
+		b.WriteString(decodedIndent)
+		b.WriteString(mutedColor.Render("┄┄┄ decoded " + key + " ┄┄┄"))
+		b.WriteString("\n")
+
+		if oldOk && newOk {
+			oldLines := strings.Split(oldDecoded, "\n")
+			newLines := strings.Split(newDecoded, "\n")
+			diff := ComputeDiff(oldLines, newLines)
+			contextDiff := ContextDiff(diff, 3)
+			if contextDiff == nil {
+				b.WriteString(decodedIndent)
+				b.WriteString(mutedColor.Render("  (no changes in decoded content)"))
+				b.WriteString("\n")
+			} else {
+				renderDiffLines(&b, contextDiff, decodedIndent, maxWidth)
+			}
+		} else {
+			if oldOk {
+				for _, ol := range strings.Split(oldDecoded, "\n") {
+					b.WriteString(decodedIndent)
+					b.WriteString(lipgloss.NewStyle().Foreground(destroyColor).Render("- " + ol))
+					b.WriteString("\n")
+				}
+			}
+			if newOk {
+				for _, nl := range strings.Split(newDecoded, "\n") {
+					b.WriteString(decodedIndent)
+					b.WriteString(lipgloss.NewStyle().Foreground(createColor).Render("+ " + nl))
+					b.WriteString("\n")
+				}
+			}
+		}
+
+		b.WriteString(decodedIndent)
+		b.WriteString(mutedColor.Render("┄┄┄ end " + key + " ┄┄┄"))
+		return b.String(), true
+	}
+
+	raw := unquote(value)
+	decoded, ok := tryBase64Decode(raw)
+	if !ok {
+		return "", false
+	}
+
+	b.WriteString(headerLine)
+	b.WriteString("\n")
+	b.WriteString(decodedIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ decoded " + key + " ┄┄┄"))
+	b.WriteString("\n")
+
+	style := lipgloss.NewStyle().Foreground(textColor)
+	if lineAction == parser.ActionCreate {
+		style = lipgloss.NewStyle().Foreground(createColor)
+	} else if lineAction == parser.ActionDestroy {
+		style = lipgloss.NewStyle().Foreground(destroyColor)
+	}
+
+	for _, dl := range strings.Split(decoded, "\n") {
+		wrapped := wrapText(dl, maxWidth-len(decodedIndent)-2)
+		for _, wl := range strings.Split(wrapped, "\n") {
+			b.WriteString(decodedIndent)
+			b.WriteString(style.Render("  " + wl))
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString(decodedIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ end " + key + " ┄┄┄"))
+	return b.String(), true
+}
+
+// tryRenderHeredocDiff detects paired remove/add heredoc blocks starting at
+// index idx and renders them as a granular diff. Handles two patterns:
+//   - Heredoc blocks: "- <<-EOT" ... "EOT," followed by "+ <<-EOT" ... "EOT,"
+//   - Prefixed blocks: consecutive "- " lines followed by consecutive "+ " lines
+func (m Model) tryRenderHeredocDiff(lines []string, idx int, action parser.Action, maxWidth int) (int, string) {
+	if idx >= len(lines) {
+		return 0, ""
+	}
+
+	trimmed := strings.TrimLeft(lines[idx], " \t")
+
+	if strings.HasPrefix(trimmed, "- ") && isHeredocMarker(trimmed[2:]) {
+		return m.renderHeredocPairDiff(lines, idx, maxWidth)
+	}
+
+	if strings.HasPrefix(trimmed, "- ") {
+		return m.renderPrefixedBlockDiff(lines, idx, action, maxWidth)
+	}
+
+	return 0, ""
+}
+
+func isHeredocMarker(s string) bool {
+	return strings.HasPrefix(strings.TrimSpace(s), "<<")
+}
+
+func parseHeredocEnd(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "<<-")
+	s = strings.TrimPrefix(s, "<<")
+	return strings.TrimSpace(s)
+}
+
+// renderHeredocPairDiff handles paired heredoc blocks where content lines
+// inside the heredoc do NOT have individual +/- prefixes.
+func (m Model) renderHeredocPairDiff(lines []string, idx int, maxWidth int) (int, string) {
+	firstTrimmed := strings.TrimLeft(lines[idx], " \t")
+	endMarker := parseHeredocEnd(firstTrimmed[2:])
+	if endMarker == "" {
+		return 0, ""
+	}
+
+	oldStart := idx + 1
+	oldEnd := oldStart
+	for oldEnd < len(lines) {
+		lt := strings.TrimSpace(lines[oldEnd])
+		if lt == endMarker || lt == endMarker+"," {
+			oldEnd++
+			break
+		}
+		oldEnd++
+	}
+
+	if oldEnd >= len(lines) {
+		return 0, ""
+	}
+
+	addHeredocIdx := oldEnd
+	for addHeredocIdx < len(lines) {
+		at := strings.TrimLeft(lines[addHeredocIdx], " \t")
+		if strings.HasPrefix(at, "+ ") && isHeredocMarker(at[2:]) {
+			break
+		}
+		if strings.TrimSpace(lines[addHeredocIdx]) == "" {
+			addHeredocIdx++
+			continue
+		}
+		return 0, ""
+	}
+
+	if addHeredocIdx >= len(lines) {
+		return 0, ""
+	}
+
+	newStart := addHeredocIdx + 1
+	newEnd := newStart
+	for newEnd < len(lines) {
+		lt := strings.TrimSpace(lines[newEnd])
+		if lt == endMarker || lt == endMarker+"," {
+			newEnd++
+			break
+		}
+		newEnd++
+	}
+
+	oldContent := extractHeredocContent(lines[oldStart : oldEnd-1])
+	newContent := extractHeredocContent(lines[newStart : newEnd-1])
+
+	if len(oldContent) == 0 && len(newContent) == 0 {
+		return 0, ""
+	}
+
+	diff := ComputeDiff(oldContent, newContent)
+	contextDiff := ContextDiff(diff, 3)
+	if contextDiff == nil {
+		return 0, ""
+	}
+
+	baseIndent := extractIndent(lines[idx])
+
+	var b strings.Builder
+	b.WriteString(baseIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ heredoc diff ┄┄┄"))
+	b.WriteString("\n")
+
+	renderDiffLines(&b, contextDiff, baseIndent, maxWidth)
+
+	b.WriteString(baseIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ end heredoc diff ┄┄┄"))
+	b.WriteString("\n")
+
+	return newEnd - idx, b.String()
+}
+
+// renderPrefixedBlockDiff handles blocks where each line has a +/- prefix.
+func (m Model) renderPrefixedBlockDiff(lines []string, idx int, action parser.Action, maxWidth int) (int, string) {
+	removeEnd := idx
+	for removeEnd < len(lines) {
+		t := strings.TrimLeft(lines[removeEnd], " \t")
+		if !strings.HasPrefix(t, "- ") {
+			break
+		}
+		removeEnd++
+	}
+
+	if removeEnd == idx {
+		return 0, ""
+	}
+
+	addStart := removeEnd
+	addEnd := removeEnd
+	for addEnd < len(lines) {
+		t := strings.TrimLeft(lines[addEnd], " \t")
+		if !strings.HasPrefix(t, "+ ") {
+			break
+		}
+		addEnd++
+	}
+
+	if addEnd == addStart {
+		return 0, ""
+	}
+
+	if (removeEnd-idx) < 3 && (addEnd-addStart) < 3 {
+		return 0, ""
+	}
+
+	oldContent := extractPrefixedContent(lines[idx:removeEnd], "- ")
+	newContent := extractPrefixedContent(lines[addStart:addEnd], "+ ")
+
+	if len(oldContent) == 0 || len(newContent) == 0 {
+		return 0, ""
+	}
+
+	diff := ComputeDiff(oldContent, newContent)
+	contextDiff := ContextDiff(diff, 3)
+	if contextDiff == nil {
+		return 0, ""
+	}
+
+	baseIndent := extractIndent(lines[idx])
+
+	var b strings.Builder
+	renderDiffLines(&b, contextDiff, baseIndent, maxWidth)
+
+	return addEnd - idx, b.String()
+}
+
+// renderDiffLines writes context-diff lines into a builder, handling all
+// DiffOp types including DiffSeparator for collapsed equal runs.
+func renderDiffLines(b *strings.Builder, diff []DiffLine, indent string, maxWidth int) {
+	for _, d := range diff {
+		switch d.Op {
+		case DiffSeparator:
+			b.WriteString(indent)
+			b.WriteString(mutedColor.Render("@@ ··· @@"))
+			b.WriteString("\n")
+		case DiffDelete:
+			wrapped := wrapText(d.Text, maxWidth-len(indent)-4)
+			for _, wl := range strings.Split(wrapped, "\n") {
+				b.WriteString(indent)
+				b.WriteString(lipgloss.NewStyle().Foreground(destroyColor).Render("- " + wl))
+				b.WriteString("\n")
+			}
+		case DiffInsert:
+			wrapped := wrapText(d.Text, maxWidth-len(indent)-4)
+			for _, wl := range strings.Split(wrapped, "\n") {
+				b.WriteString(indent)
+				b.WriteString(lipgloss.NewStyle().Foreground(createColor).Render("+ " + wl))
+				b.WriteString("\n")
+			}
+		case DiffEqual:
+			wrapped := wrapText(d.Text, maxWidth-len(indent)-4)
+			for _, wl := range strings.Split(wrapped, "\n") {
+				b.WriteString(indent)
+				b.WriteString(mutedColor.Render("  " + wl))
+				b.WriteString("\n")
+			}
+		}
+	}
+}
+
+func extractHeredocContent(lines []string) []string {
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		result = append(result, strings.TrimRight(line, " \t"))
+	}
+	return result
+}
+
+func extractPrefixedContent(lines []string, prefix string) []string {
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, prefix) {
+			result = append(result, trimmed[len(prefix):])
+		}
+	}
+	return result
+}
+
+func extractIndent(line string) string {
+	trimmed := strings.TrimLeft(line, " \t")
+	return line[:len(line)-len(trimmed)]
+}
+
+func unquote(s string) string {
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+func tryBase64Decode(s string) (string, bool) {
+	if s == "" || s == "null" || strings.HasPrefix(s, "(") {
+		return "", false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		decoded, err = base64.URLEncoding.DecodeString(s)
+		if err != nil {
+			decoded, err = base64.RawStdEncoding.DecodeString(s)
+			if err != nil {
+				return "", false
+			}
+		}
+	}
+	for _, b := range decoded {
+		if b == 0 {
+			return "", false
+		}
+	}
+	return string(decoded), true
+}
+
+func wrapText(s string, width int) string {
+	if width <= 10 {
+		return s
+	}
+	return wordwrap.String(s, width)
 }
 
 // renderSelectedResourceLine renders a resource line with full-width background highlight
@@ -529,31 +1045,36 @@ func (m Model) renderResourceLine(r parser.Resource, expanded bool, isMatch bool
 	return b.String()
 }
 
-// colorizeHCLLine applies syntax highlighting to a line of HCL in the TUI
+// colorizeHCLLine applies syntax highlighting to a line of HCL in the TUI.
+// The line-level prefix (+/-/~) drives content coloring instead of the
+// resource-level action, so + lines are green and - lines are red even
+// inside an "update" resource.
 func (m Model) colorizeHCLLine(line string, action parser.Action) string {
 	trimmed := strings.TrimLeft(line, " \t")
 	indent := line[:len(line)-len(trimmed)]
 
-	// Check for change symbols at start of content
 	var prefix string
 	var content string
+	lineAction := action
 
 	if strings.HasPrefix(trimmed, "+ ") {
 		prefix = createSymbol
 		content = trimmed[2:]
+		lineAction = parser.ActionCreate
 	} else if strings.HasPrefix(trimmed, "- ") {
 		prefix = destroySymbol
 		content = trimmed[2:]
+		lineAction = parser.ActionDestroy
 	} else if strings.HasPrefix(trimmed, "~ ") {
 		prefix = updateSymbol
 		content = trimmed[2:]
+		lineAction = parser.ActionUpdate
 	} else {
 		prefix = " "
 		content = trimmed
 	}
 
-	// Apply syntax highlighting
-	coloredContent := m.colorizeHCLContent(content, action)
+	coloredContent := m.colorizeHCLContent(content, lineAction)
 
 	return indent + prefix + " " + coloredContent
 }
@@ -732,10 +1253,10 @@ func (m Model) View() string {
 			help = "y: confirm apply • any key: cancel"
 		} else {
 			applyHint := lipgloss.NewStyle().Foreground(createColor).Bold(true).Render("a: APPLY")
-			help = fmt.Sprintf("%s • j/k: navigate • e/c: all • /: search • q: quit", applyHint)
+			help = fmt.Sprintf("%s • j/k/↑↓: navigate • e/c: all • /: search • q: quit", applyHint)
 		}
 	} else {
-		help = "j/k: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • q: quit"
+		help = "j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • q: quit"
 	}
 	b.WriteString(helpStyle.Render(help))
 
