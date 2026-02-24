@@ -16,7 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.9.0"
+const version = "0.10.0"
 
 var (
 	printMode  = false
@@ -24,6 +24,14 @@ var (
 	forceDark  = false
 	useTofu    = false
 )
+
+var tfPassthroughCommands = map[string]bool{
+	"init": true, "validate": true, "fmt": true, "output": true,
+	"state": true, "import": true, "workspace": true, "graph": true,
+	"console": true, "login": true, "logout": true, "providers": true,
+	"force-unlock": true, "show": true, "refresh": true,
+	"taint": true, "untaint": true,
+}
 
 func isTruthy(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -37,7 +45,7 @@ func isTruthy(s string) bool {
 func main() {
 	args := os.Args[1:]
 
-	// Load from env vars (CLI flags override)
+	// Load from env vars
 	if v := os.Getenv("TERRAPRISM_TOFU"); isTruthy(v) {
 		useTofu = true
 	}
@@ -48,34 +56,6 @@ func main() {
 		forceDark = true
 	}
 
-	// Parse global flags first (before subcommand)
-	// Don't consume -h/--help if it comes after a subcommand
-	var remaining []string
-	for i := 0; i < len(args); i++ {
-		// Check if this is a subcommand - pass remaining args as-is
-		if args[i] == "apply" || args[i] == "destroy" || args[i] == "plan" || args[i] == "history" || args[i] == "version" {
-			remaining = append(remaining, args[i:]...)
-			break
-		}
-
-		switch args[i] {
-		case "--tofu":
-			useTofu = true
-		case "--light":
-			forceLight = true
-		case "--dark":
-			forceDark = true
-		case "-h", "--help":
-			printUsage()
-			os.Exit(0)
-		case "-v", "--version":
-			runVersionMode()
-			os.Exit(0)
-		default:
-			remaining = append(remaining, args[i])
-		}
-	}
-
 	// Apply color scheme
 	if forceLight {
 		tui.SetLightPalette()
@@ -83,29 +63,41 @@ func main() {
 		tui.SetDarkPalette()
 	}
 
-	// Check for subcommands
-	if len(remaining) > 0 {
-		switch remaining[0] {
-		case "apply":
-			runApplyMode(remaining[1:], false)
-			return
-		case "destroy":
-			runApplyMode(remaining[1:], true)
-			return
-		case "plan":
-			runPlanMode(remaining[1:])
-			return
-		case "history":
-			runHistoryMode(remaining[1:])
-			return
-		case "version":
-			runVersionMode()
-			return
-		}
+	// Dispatch on args[0]
+	if len(args) == 0 {
+		runViewMode(nil)
+		return
 	}
-
-	// Default: view mode (pipe or file input)
-	runViewMode(remaining)
+	switch args[0] {
+	case "-h", "--help":
+		printUsage()
+		return
+	case "-v", "--version":
+		runVersionMode()
+		return
+	}
+	if tfPassthroughCommands[args[0]] {
+		runPassthroughMode(args)
+		return
+	}
+	switch args[0] {
+	case "apply":
+		runApplyMode(args[1:], false)
+		return
+	case "destroy":
+		runApplyMode(args[1:], true)
+		return
+	case "plan":
+		runPlanMode(args[1:])
+		return
+	case "history":
+		runHistoryMode(args[1:])
+		return
+	case "version":
+		runVersionMode()
+		return
+	}
+	runViewMode(args)
 }
 
 // runApplyMode runs terraform/tofu plan, shows TUI, and optionally applies
@@ -585,6 +577,25 @@ func detectTFCommand() string {
 	return "terraform" // Default, will error if not found
 }
 
+// runPassthroughMode runs terraform/tofu with the given args (e.g. init, validate, fmt)
+func runPassthroughMode(args []string) {
+	if len(args) == 0 {
+		printUsage()
+		os.Exit(1)
+	}
+	tfCmd := detectTFCommand()
+	cmd := exec.Command(tfCmd, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		os.Exit(1)
+	}
+}
+
 // runVersionMode displays terraprism version and terraform/tofu version
 func runVersionMode() {
 	fmt.Printf("terraprism v%s\n\n", version)
@@ -684,9 +695,10 @@ func printUsage() {
 USAGE:
     terraform plan -no-color | terraprism        # Pipe plan output
     terraprism <plan-file>                       # Read from file
-    terraprism [options] plan [-- tf-args]       # Run plan and view
-    terraprism [options] apply [-- tf-args]      # Run plan, view, and apply
-    terraprism [options] destroy [-- tf-args]    # Run destroy plan and apply
+    terraprism plan [-- tf-args]                 # Run plan and view
+    terraprism apply [-- tf-args]                # Run plan, view, and apply
+    terraprism destroy [-- tf-args]              # Run destroy plan and apply
+    terraprism init|validate|fmt|...             # Pass through to terraform/tofu
     terraprism history [options]                 # List history files
 
 DESCRIPTION:
@@ -700,16 +712,16 @@ COMMANDS:
     destroy     Run destroy plan, review in TUI, press 'a' to destroy
     history     View and manage plan/apply history
     version     Show terraprism and terraform/tofu versions
+    init, validate, fmt, output, state, import, workspace, graph,
+    console, login, logout, providers, force-unlock, show, refresh,
+    taint, untaint   Pass through to terraform/tofu (e.g. state list)
 
 GLOBAL OPTIONS:
     -h, --help      Show this help
     -v, --version   Show version
-    --tofu          Use tofu instead of terraform
-    --light         Force light theme
-    --dark          Force dark theme
 
 ENVIRONMENT:
-    TERRAPRISM_TOFU   Set to 1, true, or yes to use OpenTofu (avoids --tofu flag)
+    TERRAPRISM_TOFU   Set to 1, true, or yes to use OpenTofu
     TERRAPRISM_THEME  Set to "light" or "dark" to force theme
 
 VIEW OPTIONS:
@@ -744,8 +756,8 @@ EXAMPLES:
     # Destroy resources
     terraprism destroy
 
-    # Use tofu (or set TERRAPRISM_TOFU=1 in your shell)
-    terraprism --tofu apply
+    # Use tofu (set TERRAPRISM_TOFU=1 in your shell)
+    TERRAPRISM_TOFU=1 terraprism apply
 
     # Pass extra args to terraform/tofu
     terraprism apply -- -target=module.vpc -var="env=prod"
@@ -760,18 +772,13 @@ func printApplyUsage() {
 	fmt.Printf(`terraprism apply - Run plan, review, and apply
 
 USAGE:
-    terraprism [--tofu] apply [-- terraform-args]
+    terraprism apply [-- terraform-args]
 
 DESCRIPTION:
     Runs terraform/tofu plan, displays in interactive TUI for review,
     then applies if you press 'a'.
 
     All output is saved to ~/.terraprism/ for history.
-
-GLOBAL OPTIONS:
-    --tofu      Use tofu instead of terraform
-    --light     Force light color scheme
-    --dark      Force dark color scheme
 
 ENVIRONMENT:
     TERRAPRISM_TOFU   Set to 1, true, or yes to use OpenTofu
@@ -787,9 +794,9 @@ CONTROLS IN TUI:
 
 EXAMPLES:
     terraprism apply
-    terraprism --tofu apply
+    TERRAPRISM_TOFU=1 terraprism apply
     terraprism apply -- -target=module.vpc
-    terraprism --tofu apply -- -var="env=prod"
+    terraprism apply -- -var="env=prod"
 
 `)
 }

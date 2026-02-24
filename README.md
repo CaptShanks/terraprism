@@ -38,6 +38,7 @@
 - **History tracking** - All plans saved with full path, searchable picker
 - **Color-coded CLI** - Commands and status colored in history list
 - **Environment variables** - Set `TERRAPRISM_TOFU` and `TERRAPRISM_THEME` to avoid passing flags every time
+- **Passthrough commands** - Run init, validate, fmt, and other terraform/tofu commands through terraprism
 
 ## Installation
 
@@ -75,12 +76,11 @@ Review and apply in one command:
 # Run plan, review interactively, press 'a' to apply
 terraprism apply
 
-# With OpenTofu (or set TERRAPRISM_TOFU=1)
-terraprism --tofu apply
+# With OpenTofu (set TERRAPRISM_TOFU=1)
+TERRAPRISM_TOFU=1 terraprism apply
 
 # Pass arguments to terraform/tofu
 terraprism apply -- -target=module.vpc -var="env=prod"
-terraprism --tofu apply -- -var="env=prod"
 ```
 
 ### Plan Mode
@@ -89,7 +89,7 @@ Run plan and view interactively (no apply):
 
 ```bash
 terraprism plan
-terraprism --tofu plan
+TERRAPRISM_TOFU=1 terraprism plan
 ```
 
 ### Pipe Mode
@@ -185,8 +185,8 @@ Automatically switches to darker, more visible colors on light backgrounds.
 
 ### Force a theme
 ```bash
-terraprism --dark plan.txt   # Force dark mode
-terraprism --light plan.txt  # Force light mode
+TERRAPRISM_THEME=dark terraprism plan.txt   # Force dark mode
+TERRAPRISM_THEME=light terraprism plan.txt # Force light mode
 ```
 
 ## Commands
@@ -198,6 +198,7 @@ terraprism apply               # Run plan, view, and apply
 terraprism destroy             # Run destroy plan and apply
 terraprism history             # Manage history files
 terraprism version             # Show terraprism and terraform/tofu version
+terraprism init|validate|fmt|output|state|import|...  # Pass through to terraform/tofu
 ```
 
 ## Options
@@ -206,9 +207,6 @@ terraprism version             # Show terraprism and terraform/tofu version
 -h, --help      Show help message
 -v, --version   Show version (includes terraform/tofu version)
 -p, --print     Print colored output without interactive TUI
---light         Force light color scheme (Catppuccin Latte)
---dark          Force dark color scheme (Catppuccin Mocha)
---tofu          Use OpenTofu instead of Terraform
 ```
 
 ## Environment Variables
@@ -221,6 +219,19 @@ TERRAPRISM_THEME   Set to "light" or "dark" to force color scheme
 ```
 
 Example: add `export TERRAPRISM_TOFU=1` to your `~/.bashrc` or `~/.zshrc` to always use OpenTofu.
+
+## Passthrough Commands
+
+Any terraform/tofu command not enhanced by terraprism (init, validate, fmt, output, state, import, workspace, graph, console, login, logout, providers, force-unlock, show, refresh, taint, untaint) is passed through to the selected engine. Use terraprism as a drop-in replacement:
+
+```bash
+terraprism init
+terraprism init -upgrade
+terraprism validate
+terraprism fmt -recursive
+terraprism output
+terraprism state list   # "state" is the command, "list" is its subcommand
+```
 
 ## History
 
