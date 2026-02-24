@@ -68,13 +68,27 @@ jobs:
           cd artifacts
           sha256sum terraprism-* > checksums.txt
 
+      - name: Prepare release body
+        id: body
+        run: |
+          BODY_FILE="release-notes/${{ github.ref_name }}.md"
+          if [ -f "$BODY_FILE" ]; then
+            echo "path=$BODY_FILE" >> $GITHUB_OUTPUT
+          else
+            echo "## terraprism ${{ github.ref_name }}" > release-body.md
+            echo "" >> release-body.md
+            echo "See commit history for changes." >> release-body.md
+            echo "path=release-body.md" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/terraprism-*
             artifacts/checksums.txt
-          generate_release_notes: true
+          body_path: ${{ steps.body.outputs.path }}
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
