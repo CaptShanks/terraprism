@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  Collapsible resources • Syntax-highlighted HCL • Vim-style navigation • Auto light/dark mode
+  Collapsible resources • Filter & sort • Syntax-highlighted HCL • Vim-style navigation • Auto light/dark mode
 </p>
 
 ---
@@ -28,7 +28,9 @@
 
 - **Syntax-highlighted HCL** - Full color-coded display of your plan
 - **Collapsible resources** - Expand/collapse individual resources or all at once
-- **Search** - Find resources by name, type, or address
+- **Status filter** - Filter resources by action (create, destroy, update, replace, read, etc.)
+- **Sort** - Sort by plan order, action, address, or resource type
+- **Search** - Find resources by name, type, or address (works with filters)
 - **Vim-style navigation** - j/k/gg/G/d/u and more
 - **Auto light/dark mode** - Detects your terminal background
 - **Format support** - Works with Terraform 0.11+ and OpenTofu
@@ -138,7 +140,22 @@ terraform plan -no-color | terraprism -p
 | `/` | Start search |
 | `n` | Next match |
 | `N` | Previous match |
-| `Esc` | Clear search |
+| `Esc` | Clear search (or clear filters when filters active) |
+
+### Filter
+| Key | Action |
+|-----|--------|
+| `f` | Open filter picker |
+| `Esc` | Clear all filters (from main view or picker) |
+
+In the filter picker: **Space** toggle status, **a** select all, **c** clear all, **Enter** apply, **Esc** clear and close.
+
+### Sort
+| Key | Action |
+|-----|--------|
+| `s` | Open sort picker |
+
+Sort options: default (plan order), by action, by address, by type.
 
 ### Apply (in apply mode)
 | Key | Action |
@@ -263,8 +280,10 @@ Large Terraform plans can be difficult to review:
 Terra-Prism solves these problems:
 
 - Collapsible sections for high-level overview
+- Filter by status to focus on creates, destroys, updates, etc.
+- Sort by action, address, or type for organized review
 - Consistent syntax highlighting
-- Search to find specific resources
+- Search to find specific resources (works with filters)
 - Vim-style navigation for efficiency
 - Auto-scrolling keeps selection visible
 
@@ -299,7 +318,7 @@ make build
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+GNU AGPL v3.0 - see [LICENSE](LICENSE) for details.
 
 ---
 
