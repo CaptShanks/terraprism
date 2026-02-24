@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/base64"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -39,6 +40,107 @@ type Model struct {
 	tfCommand    string // "terraform" or "tofu"
 	shouldApply  bool   // User pressed 'a' to apply
 	confirmApply bool   // Waiting for confirmation
+
+	// Status filter fields
+	statusFilters map[parser.Action]bool // true = show resources with this action
+	filtering     bool                    // filter picker is open
+	filterCursor  int                     // cursor in filter picker
+
+	// Sort fields
+	sortOrder   SortOrder // default, byAction, byAddress, byType
+	sorting     bool      // sort picker is open
+	sortCursor  int       // cursor in sort picker
+}
+
+// SortOrder defines how resources are ordered
+type SortOrder string
+
+const (
+	SortDefault   SortOrder = "default"
+	SortByAction  SortOrder = "action"
+	SortByAddress SortOrder = "address"
+	SortByType    SortOrder = "type"
+)
+
+// sortOptions is the ordered list of sort choices for the picker
+var sortOptions = []SortOrder{SortDefault, SortByAction, SortByAddress, SortByType}
+
+// actionOrder defines sort order for actions (destructive last)
+var actionOrder = map[parser.Action]int{
+	parser.ActionCreate:       0,
+	parser.ActionRead:         1,
+	parser.ActionUpdate:       2,
+	parser.ActionReplace:      3,
+	parser.ActionDeleteCreate: 4,
+	parser.ActionCreateDelete: 5,
+	parser.ActionDestroy:      6,
+	parser.ActionNoOp:         7,
+}
+
+// filterableActions is the ordered list of statuses available for filtering
+var filterableActions = []parser.Action{
+	parser.ActionCreate,
+	parser.ActionDestroy,
+	parser.ActionUpdate,
+	parser.ActionReplace,
+	parser.ActionRead,
+	parser.ActionDeleteCreate,
+	parser.ActionCreateDelete,
+}
+
+// filteredResources returns indices into plan.Resources that pass the status filter.
+// When statusFilters is empty or nil, returns all indices.
+func (m *Model) filteredResources() []int {
+	if len(m.statusFilters) == 0 {
+		indices := make([]int, len(m.plan.Resources))
+		for i := range m.plan.Resources {
+			indices[i] = i
+		}
+		return indices
+	}
+	var indices []int
+	for i, r := range m.plan.Resources {
+		if m.statusFilters[r.Action] {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
+// sortedResources returns filtered indices sorted by the current sort order.
+func (m *Model) sortedResources() []int {
+	filtered := m.filteredResources()
+	if m.sortOrder == SortDefault || m.sortOrder == "" {
+		return filtered
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		ri := m.plan.Resources[filtered[i]]
+		rj := m.plan.Resources[filtered[j]]
+		switch m.sortOrder {
+		case SortByAction:
+			oi, oki := actionOrder[ri.Action]
+			oj, okj := actionOrder[rj.Action]
+			if !oki {
+				oi = 99
+			}
+			if !okj {
+				oj = 99
+			}
+			if oi != oj {
+				return oi < oj
+			}
+			return ri.Address < rj.Address
+		case SortByAddress:
+			return ri.Address < rj.Address
+		case SortByType:
+			if ri.Type != rj.Type {
+				return ri.Type < rj.Type
+			}
+			return ri.Address < rj.Address
+		}
+		return false
+	})
+	return filtered
 }
 
 // NewModel creates a new TUI model (view-only mode)
@@ -54,6 +156,8 @@ func NewModel(plan *parser.Plan) Model {
 		searchInput:   ti,
 		searchMatches: []int{},
 		applyMode:     false,
+		statusFilters: nil, // nil = show all
+		sortOrder:     SortDefault,
 	}
 }
 
@@ -72,6 +176,8 @@ func NewModelWithApply(plan *parser.Plan, planFile, tfCommand string) Model {
 		applyMode:     true,
 		planFile:      planFile,
 		tfCommand:     tfCommand,
+		statusFilters: nil, // nil = show all
+		sortOrder:     SortDefault,
 	}
 }
 
@@ -109,6 +215,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateViewportContent()
 
 	case tea.KeyMsg:
+		if m.filtering {
+			return m.handleFilterKey(msg)
+		}
+		if m.sorting {
+			return m.handleSortKey(msg)
+		}
 		if m.searching {
 			switch msg.String() {
 			case "enter":
@@ -159,7 +271,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "down", "j":
-		if m.cursor < len(m.plan.Resources)-1 {
+		filtered := m.sortedResources()
+		if m.cursor < len(filtered)-1 {
 			m.cursor++
 			m.updateViewportContent()
 			m.ensureCursorVisible()
@@ -168,7 +281,11 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "enter", " ":
-		m.expanded[m.cursor] = !m.expanded[m.cursor]
+		filtered := m.sortedResources()
+		if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
+			resourceIdx := filtered[m.cursor]
+			m.expanded[resourceIdx] = !m.expanded[resourceIdx]
+		}
 		m.updateViewportContent()
 		m.scrollForExpanded()
 
@@ -177,6 +294,27 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		m.collapseAll()
+
+	case "f":
+		m.filtering = true
+		m.filterCursor = 0
+		// Ensure statusFilters map exists when opening picker
+		if m.statusFilters == nil {
+			m.statusFilters = make(map[parser.Action]bool)
+		}
+		return m, nil
+
+	case "s":
+		m.sorting = true
+		// Set sortCursor to current sort order
+		m.sortCursor = 0
+		for i, opt := range sortOptions {
+			if opt == m.sortOrder {
+				m.sortCursor = i
+				break
+			}
+		}
+		return m, nil
 
 	case "/":
 		m.searching = true
@@ -190,10 +328,19 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.prevMatch()
 
 	case "esc":
-		m.clearSearch()
+		if len(m.statusFilters) > 0 {
+			m.statusFilters = nil
+			m.clampCursorAndRefreshSearch()
+			m.updateViewportContent()
+		} else {
+			m.clearSearch()
+		}
 
 	case "backspace", "h", "left":
-		m.expanded[m.cursor] = false
+		filtered := m.sortedResources()
+		if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
+			m.expanded[filtered[m.cursor]] = false
+		}
 		m.updateViewportContent()
 		m.ensureCursorVisible()
 
@@ -217,7 +364,10 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.viewport.SetYOffset(m.viewport.YOffset + m.viewport.Height)
 
 	case "l", "right":
-		m.expanded[m.cursor] = true
+		filtered := m.sortedResources()
+		if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
+			m.expanded[filtered[m.cursor]] = true
+		}
 		m.updateViewportContent()
 		m.scrollForExpanded()
 
@@ -251,25 +401,128 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// expandAll expands all resources
+// handleFilterKey handles key presses in filter picker mode
+func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.statusFilters = nil
+		m.filtering = false
+		m.clampCursorAndRefreshSearch()
+		m.updateViewportContent()
+		return m, nil
+
+	case "enter":
+		// Toggle on Space, apply and close on Enter (when not toggling)
+		// Enter toggles too per plan - "Space/Enter: toggle selected status on/off"
+		// So Enter both toggles and... the plan says "Enter: Apply and close". Let me re-read.
+		// "Space/Enter: toggle selected status on/off" and "Enter: Apply and close"
+		// So Enter toggles the current selection AND applies/closes? Or Enter just applies?
+		// Typical UX: Space toggles, Enter applies and closes. So we need to not toggle on Enter, just close.
+		// Actually "Enter (when not toggling): apply filters and close" - so Enter = apply and close, don't toggle.
+		m.filtering = false
+		m.clampCursorAndRefreshSearch()
+		m.updateViewportContent()
+		return m, nil
+
+	case "up", "k":
+		if m.filterCursor > 0 {
+			m.filterCursor--
+		}
+		return m, nil
+
+	case "down", "j":
+		if m.filterCursor < len(filterableActions)-1 {
+			m.filterCursor++
+		}
+		return m, nil
+
+	case " ":
+		// Space toggles the selected status
+		action := filterableActions[m.filterCursor]
+		m.statusFilters[action] = !m.statusFilters[action]
+		return m, nil
+
+	case "a":
+		// Select all
+		for _, action := range filterableActions {
+			m.statusFilters[action] = true
+		}
+		return m, nil
+
+	case "c":
+		// Clear all filters (show all)
+		m.statusFilters = make(map[parser.Action]bool)
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// handleSortKey handles key presses in sort picker mode
+func (m Model) handleSortKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.sorting = false
+		m.updateViewportContent()
+		return m, nil
+
+	case "enter", " ":
+		m.sortOrder = sortOptions[m.sortCursor]
+		m.sorting = false
+		m.clampCursorAndRefreshSearch()
+		m.updateViewportContent()
+		return m, nil
+
+	case "up", "k":
+		if m.sortCursor > 0 {
+			m.sortCursor--
+		}
+		return m, nil
+
+	case "down", "j":
+		if m.sortCursor < len(sortOptions)-1 {
+			m.sortCursor++
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// clampCursorAndRefreshSearch clamps cursor to valid range after filter/sort change and re-runs search
+func (m *Model) clampCursorAndRefreshSearch() {
+	filtered := m.sortedResources()
+	if m.cursor >= len(filtered) {
+		if len(filtered) > 0 {
+			m.cursor = len(filtered) - 1
+		} else {
+			m.cursor = 0
+		}
+	}
+	if m.searchQuery != "" {
+		m.performSearch()
+	}
+}
+
+// expandAll expands all visible (filtered/sorted) resources
 func (m *Model) expandAll() {
-	for i := range m.plan.Resources {
-		m.expanded[i] = true
+	for _, idx := range m.sortedResources() {
+		m.expanded[idx] = true
 	}
 	m.updateViewportContent()
 	m.ensureCursorVisible()
 }
 
-// collapseAll collapses all resources
+// collapseAll collapses all visible (filtered/sorted) resources
 func (m *Model) collapseAll() {
-	for i := range m.plan.Resources {
-		m.expanded[i] = false
+	for _, idx := range m.sortedResources() {
+		m.expanded[idx] = false
 	}
 	m.updateViewportContent()
 	m.ensureCursorVisible()
 }
 
-// nextMatch moves to the next search match
+// nextMatch moves to the next search match (searchMatches holds display indices)
 func (m *Model) nextMatch() {
 	if len(m.searchMatches) > 0 {
 		m.currentMatch = (m.currentMatch + 1) % len(m.searchMatches)
@@ -279,7 +532,7 @@ func (m *Model) nextMatch() {
 	}
 }
 
-// prevMatch moves to the previous search match
+// prevMatch moves to the previous search match (searchMatches holds display indices)
 func (m *Model) prevMatch() {
 	if len(m.searchMatches) > 0 {
 		m.currentMatch--
@@ -328,9 +581,12 @@ func (m *Model) handleGKey() {
 	}
 }
 
-// gotoBottom moves cursor to the last resource and scrolls so it's visible
+// gotoBottom moves cursor to the last visible resource and scrolls so it's visible
 func (m *Model) gotoBottom() {
-	m.cursor = len(m.plan.Resources) - 1
+	filtered := m.sortedResources()
+	if len(filtered) > 0 {
+		m.cursor = len(filtered) - 1
+	}
 	m.updateViewportContent()
 	m.ensureCursorVisible()
 	m.pendingG = false
@@ -345,11 +601,13 @@ func (m *Model) performSearch() {
 	}
 
 	query := strings.ToLower(m.searchQuery)
-	for i, r := range m.plan.Resources {
+	filtered := m.sortedResources()
+	for displayIdx, resourceIdx := range filtered {
+		r := m.plan.Resources[resourceIdx]
 		if strings.Contains(strings.ToLower(r.Address), query) ||
 			strings.Contains(strings.ToLower(r.Type), query) ||
 			strings.Contains(strings.ToLower(r.Name), query) {
-			m.searchMatches = append(m.searchMatches, i)
+			m.searchMatches = append(m.searchMatches, displayIdx)
 		}
 	}
 
@@ -399,8 +657,13 @@ func (m *Model) scrollForExpanded() {
 	}
 
 	lineNum := m.resourceLineStarts[m.cursor]
+	filtered := m.sortedResources()
+	resourceIdx := -1
+	if m.cursor < len(filtered) {
+		resourceIdx = filtered[m.cursor]
+	}
 
-	if m.expanded[m.cursor] {
+	if resourceIdx >= 0 && m.expanded[resourceIdx] {
 		var endLine int
 		if m.cursor+1 < len(m.resourceLineStarts) {
 			endLine = m.resourceLineStarts[m.cursor+1]
@@ -422,17 +685,25 @@ func (m *Model) renderResources() string {
 	var b strings.Builder
 	lineCount := 0
 
-	m.resourceLineStarts = make([]int, len(m.plan.Resources))
+	filtered := m.sortedResources()
+	m.resourceLineStarts = make([]int, len(filtered))
 
-	for i, r := range m.plan.Resources {
-		m.resourceLineStarts[i] = lineCount
+	if len(filtered) == 0 {
+		b.WriteString(mutedColor.Render("No resources match the current filters. Press 'f' to change filters."))
+		b.WriteString("\n")
+		return b.String()
+	}
 
-		isSelected := i == m.cursor
-		isExpanded := m.expanded[i]
+	for displayIdx, resourceIdx := range filtered {
+		m.resourceLineStarts[displayIdx] = lineCount
+		r := m.plan.Resources[resourceIdx]
+
+		isSelected := displayIdx == m.cursor
+		isExpanded := m.expanded[resourceIdx]
 		isMatch := false
 
 		for _, match := range m.searchMatches {
-			if match == i {
+			if match == displayIdx {
 				isMatch = true
 				break
 			}
@@ -1193,6 +1464,60 @@ func getActionDescription(action parser.Action) string {
 	}
 }
 
+// sortOrderLabel returns a display label for a sort option
+func sortOrderLabel(opt SortOrder) string {
+	switch opt {
+	case SortDefault:
+		return "default (plan order)"
+	case SortByAction:
+		return "by action"
+	case SortByAddress:
+		return "by address"
+	case SortByType:
+		return "by type"
+	default:
+		return string(opt)
+	}
+}
+
+// sortOrderHint returns a one-line hint explaining what a sort option does
+func sortOrderHint(opt SortOrder) string {
+	switch opt {
+	case SortDefault:
+		return "— as Terraform outputs them"
+	case SortByAction:
+		return "— group create, destroy, update, etc."
+	case SortByAddress:
+		return "— alphabetical by resource address"
+	case SortByType:
+		return "— group by resource type (aws_instance, etc.)"
+	default:
+		return ""
+	}
+}
+
+// filterActionLabel returns a short label for the filter picker
+func filterActionLabel(action parser.Action) string {
+	switch action {
+	case parser.ActionCreate:
+		return "create"
+	case parser.ActionDestroy:
+		return "destroy"
+	case parser.ActionUpdate:
+		return "update"
+	case parser.ActionReplace:
+		return "replace"
+	case parser.ActionRead:
+		return "read"
+	case parser.ActionDeleteCreate:
+		return "destroy+create"
+	case parser.ActionCreateDelete:
+		return "create+destroy"
+	default:
+		return string(action)
+	}
+}
+
 // View renders the UI
 func (m Model) View() string {
 	if !m.ready {
@@ -1218,6 +1543,72 @@ func (m Model) View() string {
 		b.WriteString(summaryStyle.Render(fmt.Sprintf("  %d resources with changes", len(m.plan.Resources))))
 	}
 	b.WriteString("\n\n")
+
+	// Filter picker (when open)
+	if m.filtering {
+		b.WriteString(searchStyle.Render("Filter by status (Space: toggle, a: all, c: clear, Enter: apply, Esc: clear all and close)"))
+		b.WriteString("\n\n")
+		for i, action := range filterableActions {
+			checked := "[ ]"
+			if m.statusFilters != nil && m.statusFilters[action] {
+				checked = "[x]"
+			}
+			label := filterActionLabel(action)
+			rowStyle := lipgloss.NewStyle().Foreground(textColor)
+			if i == m.filterCursor {
+				rowStyle = rowStyle.Background(selectedBg)
+			}
+			// Color the label by action type
+			labelStyle := GetResourceStyle(string(action))
+			b.WriteString(rowStyle.Render("  "+checked+" ") + labelStyle.Render(label))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+		b.WriteString(helpStyle.Render("j/k: navigate • Space: toggle • a: select all • c: clear all • Enter: apply • Esc: clear all and close"))
+		return appStyle.Render(b.String())
+	}
+
+	// Sort picker (when open)
+	if m.sorting {
+		b.WriteString(searchStyle.Render("Sort by (Enter/Space: select, Esc: close)"))
+		b.WriteString("\n\n")
+		for i, opt := range sortOptions {
+			marker := "  "
+			if opt == m.sortOrder {
+				marker = "● "
+			}
+			rowStyle := lipgloss.NewStyle().Foreground(textColor)
+			if i == m.sortCursor {
+				rowStyle = rowStyle.Background(selectedBg)
+			}
+			line := marker + sortOrderLabel(opt) + " " + mutedColor.Render(sortOrderHint(opt))
+			b.WriteString(rowStyle.Render(line))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+		b.WriteString(helpStyle.Render("j/k: navigate • Enter/Space: select • Esc: close"))
+		return appStyle.Render(b.String())
+	}
+
+	// Filter status (when filters active, not in picker)
+	if len(m.statusFilters) > 0 {
+		var labels []string
+		for _, action := range filterableActions {
+			if m.statusFilters[action] {
+				labels = append(labels, filterActionLabel(action))
+			}
+		}
+		filterInfo := fmt.Sprintf("Filter: %s (%d active) • f: change • Esc: clear all", strings.Join(labels, ", "), len(labels))
+		b.WriteString(searchStyle.Render(filterInfo))
+		b.WriteString("\n\n")
+	}
+
+	// Sort status (when not default, not in picker)
+	if m.sortOrder != SortDefault && m.sortOrder != "" {
+		sortInfo := fmt.Sprintf("Sort: %s • s: change", sortOrderLabel(m.sortOrder))
+		b.WriteString(searchStyle.Render(sortInfo))
+		b.WriteString("\n\n")
+	}
 
 	// Search bar (if active)
 	if m.searching {
@@ -1253,10 +1644,13 @@ func (m Model) View() string {
 			help = "y: confirm apply • any key: cancel"
 		} else {
 			applyHint := lipgloss.NewStyle().Foreground(createColor).Bold(true).Render("a: APPLY")
-			help = fmt.Sprintf("%s • j/k/↑↓: navigate • e/c: all • /: search • q: quit", applyHint)
+			help = fmt.Sprintf("%s • j/k/↑↓: navigate • e/c: all • /: search • f: filter • s: sort • q: quit", applyHint)
 		}
 	} else {
-		help = "j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • q: quit"
+		help = "j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • f: filter • s: sort • q: quit"
+		if len(m.statusFilters) > 0 {
+			help += " • Esc: clear filter"
+		}
 	}
 	b.WriteString(helpStyle.Render(help))
 
