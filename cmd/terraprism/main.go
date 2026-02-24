@@ -16,7 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.8.0"
+const version = "0.9.0"
 
 var (
 	printMode  = false
@@ -25,8 +25,28 @@ var (
 	useTofu    = false
 )
 
+func isTruthy(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 func main() {
 	args := os.Args[1:]
+
+	// Load from env vars (CLI flags override)
+	if v := os.Getenv("TERRAPRISM_TOFU"); isTruthy(v) {
+		useTofu = true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("TERRAPRISM_THEME"))) {
+	case "light":
+		forceLight = true
+	case "dark":
+		forceDark = true
+	}
 
 	// Parse global flags first (before subcommand)
 	// Don't consume -h/--help if it comes after a subcommand
@@ -688,6 +708,10 @@ GLOBAL OPTIONS:
     --light         Force light theme
     --dark          Force dark theme
 
+ENVIRONMENT:
+    TERRAPRISM_TOFU   Set to 1, true, or yes to use OpenTofu (avoids --tofu flag)
+    TERRAPRISM_THEME  Set to "light" or "dark" to force theme
+
 VIEW OPTIONS:
     -p, --print     Print mode (no TUI)
 
@@ -720,7 +744,7 @@ EXAMPLES:
     # Destroy resources
     terraprism destroy
 
-    # Use tofu instead of terraform
+    # Use tofu (or set TERRAPRISM_TOFU=1 in your shell)
     terraprism --tofu apply
 
     # Pass extra args to terraform/tofu
@@ -748,6 +772,10 @@ GLOBAL OPTIONS:
     --tofu      Use tofu instead of terraform
     --light     Force light color scheme
     --dark      Force dark color scheme
+
+ENVIRONMENT:
+    TERRAPRISM_TOFU   Set to 1, true, or yes to use OpenTofu
+    TERRAPRISM_THEME  Set to "light" or "dark" to force theme
 
 TERRAFORM ARGS:
     --          Everything after this is passed to terraform/tofu

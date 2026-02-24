@@ -37,6 +37,7 @@
 - **Full-line selection** - Clear visual indicator of selected resource
 - **History tracking** - All plans saved with full path, searchable picker
 - **Color-coded CLI** - Commands and status colored in history list
+- **Environment variables** - Set `TERRAPRISM_TOFU` and `TERRAPRISM_THEME` to avoid passing flags every time
 
 ## Installation
 
@@ -74,7 +75,7 @@ Review and apply in one command:
 # Run plan, review interactively, press 'a' to apply
 terraprism apply
 
-# With OpenTofu
+# With OpenTofu (or set TERRAPRISM_TOFU=1)
 terraprism --tofu apply
 
 # Pass arguments to terraform/tofu
@@ -209,6 +210,17 @@ terraprism version             # Show terraprism and terraform/tofu version
 --dark          Force dark color scheme (Catppuccin Mocha)
 --tofu          Use OpenTofu instead of Terraform
 ```
+
+## Environment Variables
+
+Set these to avoid passing flags every time:
+
+```
+TERRAPRISM_TOFU    Set to 1, true, or yes to use OpenTofu instead of Terraform
+TERRAPRISM_THEME   Set to "light" or "dark" to force color scheme
+```
+
+Example: add `export TERRAPRISM_TOFU=1` to your `~/.bashrc` or `~/.zshrc` to always use OpenTofu.
 
 ## History
 
