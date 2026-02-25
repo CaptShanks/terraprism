@@ -152,6 +152,27 @@ func (m *Model) sortedResources() []int {
 	return filtered
 }
 
+// displayedResourceIndices returns the resource indices to display.
+// When searchQuery is empty: returns sortedResources() (all filtered/sorted).
+// When searchQuery is non-empty: returns only matching resources (filtered by search).
+func (m *Model) displayedResourceIndices() []int {
+	sorted := m.sortedResources()
+	if m.searchQuery == "" {
+		return sorted
+	}
+	if len(m.searchMatches) == 0 {
+		return []int{} // no matches, show empty
+	}
+	// searchMatches holds display indices into sorted; map to resource indices
+	result := make([]int, 0, len(m.searchMatches))
+	for _, displayIdx := range m.searchMatches {
+		if displayIdx >= 0 && displayIdx < len(sorted) {
+			result = append(result, sorted[displayIdx])
+		}
+	}
+	return result
+}
+
 // NewModel creates a new TUI model (view-only mode)
 func NewModel(plan *parser.Plan, version string) Model {
 	ti := textinput.New()
@@ -265,15 +286,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.searching = false
 				m.searchQuery = m.searchInput.Value()
 				m.performSearch()
+				m.clampCursorAndRefreshSearch()
 				m.updateViewportContent()
 			case "esc":
 				m.searching = false
 				m.searchInput.SetValue("")
 				m.searchQuery = ""
 				m.searchMatches = []int{}
+				m.clampCursorAndRefreshSearch()
 				m.updateViewportContent()
+			case "up":
+				return m.handleSearchArrowUp(), nil
+			case "down":
+				return m.handleSearchArrowDown(), nil
 			default:
 				m.searchInput, cmd = m.searchInput.Update(msg)
+				m.searchQuery = m.searchInput.Value()
+				m.performSearch()
+				m.clampCursorAndRefreshSearch()
+				m.updateViewportContent()
 				cmds = append(cmds, cmd)
 			}
 		} else {
@@ -336,8 +367,33 @@ func handleKeyUp(m Model) (Model, tea.Cmd, bool) {
 	return m, nil, true
 }
 
+// handleSearchArrowUp handles up arrow in search mode (scroll filtered list)
+func (m Model) handleSearchArrowUp() Model {
+	if m.cursor > 0 {
+		m.cursor--
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+	} else {
+		m.viewport.SetYOffset(m.viewport.YOffset - 1)
+	}
+	return m
+}
+
+// handleSearchArrowDown handles down arrow in search mode (scroll filtered list)
+func (m Model) handleSearchArrowDown() Model {
+	displayed := m.displayedResourceIndices()
+	if m.cursor < len(displayed)-1 {
+		m.cursor++
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+	} else {
+		m.viewport.SetYOffset(m.viewport.YOffset + 1)
+	}
+	return m
+}
+
 func handleKeyDown(m Model) (Model, tea.Cmd, bool) {
-	filtered := m.sortedResources()
+	filtered := m.displayedResourceIndices()
 	if m.cursor < len(filtered)-1 {
 		m.cursor++
 		m.updateViewportContent()
@@ -349,7 +405,7 @@ func handleKeyDown(m Model) (Model, tea.Cmd, bool) {
 }
 
 func handleKeyEnter(m Model) (Model, tea.Cmd, bool) {
-	filtered := m.sortedResources()
+	filtered := m.displayedResourceIndices()
 	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
 		resourceIdx := filtered[m.cursor]
 		m.expanded[resourceIdx] = !m.expanded[resourceIdx]
@@ -418,7 +474,7 @@ func handleKeyEsc(m Model) (Model, tea.Cmd, bool) {
 }
 
 func handleKeyCollapseCurrent(m Model) (Model, tea.Cmd, bool) {
-	filtered := m.sortedResources()
+	filtered := m.displayedResourceIndices()
 	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
 		m.expanded[filtered[m.cursor]] = false
 	}
@@ -459,7 +515,7 @@ func handleKeyPgDown(m Model) (Model, tea.Cmd, bool) {
 }
 
 func handleKeyExpandCurrent(m Model) (Model, tea.Cmd, bool) {
-	filtered := m.sortedResources()
+	filtered := m.displayedResourceIndices()
 	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
 		m.expanded[filtered[m.cursor]] = true
 	}
@@ -601,10 +657,10 @@ func (m Model) handleSortKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // clampCursorAndRefreshSearch clamps cursor to valid range after filter/sort change and re-runs search
 func (m *Model) clampCursorAndRefreshSearch() {
-	filtered := m.sortedResources()
-	if m.cursor >= len(filtered) {
-		if len(filtered) > 0 {
-			m.cursor = len(filtered) - 1
+	displayed := m.displayedResourceIndices()
+	if m.cursor >= len(displayed) {
+		if len(displayed) > 0 {
+			m.cursor = len(displayed) - 1
 		} else {
 			m.cursor = 0
 		}
@@ -616,7 +672,7 @@ func (m *Model) clampCursorAndRefreshSearch() {
 
 // expandAll expands all visible (filtered/sorted) resources
 func (m *Model) expandAll() {
-	for _, idx := range m.sortedResources() {
+	for _, idx := range m.displayedResourceIndices() {
 		m.expanded[idx] = true
 	}
 	m.updateViewportContent()
@@ -625,31 +681,39 @@ func (m *Model) expandAll() {
 
 // collapseAll collapses all visible (filtered/sorted) resources
 func (m *Model) collapseAll() {
-	for _, idx := range m.sortedResources() {
+	for _, idx := range m.displayedResourceIndices() {
 		m.expanded[idx] = false
 	}
 	m.updateViewportContent()
 	m.ensureCursorVisible()
 }
 
-// nextMatch moves to the next search match (searchMatches holds display indices)
+// nextMatch moves to the next search match
 func (m *Model) nextMatch() {
-	if len(m.searchMatches) > 0 {
-		m.currentMatch = (m.currentMatch + 1) % len(m.searchMatches)
-		m.cursor = m.searchMatches[m.currentMatch]
+	if m.searchQuery == "" || len(m.searchMatches) == 0 {
+		return
+	}
+	displayed := m.displayedResourceIndices()
+	if len(displayed) > 0 {
+		m.currentMatch = (m.currentMatch + 1) % len(displayed)
+		m.cursor = m.currentMatch
 		m.updateViewportContent()
 		m.ensureCursorVisible()
 	}
 }
 
-// prevMatch moves to the previous search match (searchMatches holds display indices)
+// prevMatch moves to the previous search match
 func (m *Model) prevMatch() {
-	if len(m.searchMatches) > 0 {
+	if m.searchQuery == "" || len(m.searchMatches) == 0 {
+		return
+	}
+	displayed := m.displayedResourceIndices()
+	if len(displayed) > 0 {
 		m.currentMatch--
 		if m.currentMatch < 0 {
-			m.currentMatch = len(m.searchMatches) - 1
+			m.currentMatch = len(displayed) - 1
 		}
-		m.cursor = m.searchMatches[m.currentMatch]
+		m.cursor = m.currentMatch
 		m.updateViewportContent()
 		m.ensureCursorVisible()
 	}
@@ -693,13 +757,30 @@ func (m *Model) handleGKey() {
 
 // gotoBottom moves cursor to the last visible resource and scrolls so it's visible
 func (m *Model) gotoBottom() {
-	filtered := m.sortedResources()
-	if len(filtered) > 0 {
-		m.cursor = len(filtered) - 1
+	displayed := m.displayedResourceIndices()
+	if len(displayed) > 0 {
+		m.cursor = len(displayed) - 1
 	}
 	m.updateViewportContent()
 	m.ensureCursorVisible()
 	m.pendingG = false
+}
+
+// fuzzyMatch returns true if all characters in query appear in text in order
+// (not necessarily consecutive). E.g. "lmbda" matches "lambda", "inst" matches "instance".
+func fuzzyMatch(text, query string) bool {
+	text = strings.ToLower(text)
+	query = strings.ToLower(query)
+	if query == "" {
+		return true
+	}
+	qi := 0
+	for i := 0; i < len(text) && qi < len(query); i++ {
+		if text[i] == query[qi] {
+			qi++
+		}
+	}
+	return qi == len(query)
 }
 
 func (m *Model) performSearch() {
@@ -707,22 +788,34 @@ func (m *Model) performSearch() {
 	m.currentMatch = 0
 
 	if m.searchQuery == "" {
+		return // displayedResourceIndices will show full list
+	}
+
+	terms := strings.Fields(strings.ToLower(m.searchQuery))
+	if len(terms) == 0 {
 		return
 	}
 
-	query := strings.ToLower(m.searchQuery)
 	filtered := m.sortedResources()
 	for displayIdx, resourceIdx := range filtered {
 		r := m.plan.Resources[resourceIdx]
-		if strings.Contains(strings.ToLower(r.Address), query) ||
-			strings.Contains(strings.ToLower(r.Type), query) ||
-			strings.Contains(strings.ToLower(r.Name), query) {
+		searchable := strings.ToLower(r.Address + " " + r.Type + " " + r.Name)
+
+		allMatch := true
+		for _, term := range terms {
+			if !fuzzyMatch(searchable, term) {
+				allMatch = false
+				break
+			}
+		}
+		if allMatch {
 			m.searchMatches = append(m.searchMatches, displayIdx)
 		}
 	}
 
 	if len(m.searchMatches) > 0 {
-		m.cursor = m.searchMatches[0]
+		m.cursor = 0 // first item in filtered display
+		m.currentMatch = 0
 	}
 }
 
@@ -795,29 +888,26 @@ func (m *Model) renderResources() string {
 	var b strings.Builder
 	lineCount := 0
 
-	filtered := m.sortedResources()
-	m.resourceLineStarts = make([]int, len(filtered))
+	displayed := m.displayedResourceIndices()
+	m.resourceLineStarts = make([]int, len(displayed))
 
-	if len(filtered) == 0 {
-		b.WriteString(mutedColor.Render("No resources match the current filters. Press 'f' to change filters."))
+	if len(displayed) == 0 {
+		if m.searchQuery != "" {
+			b.WriteString(mutedColor.Render(fmt.Sprintf("No resources match search '%s'. Press Esc to clear.", m.searchQuery)))
+		} else {
+			b.WriteString(mutedColor.Render("No resources match the current filters. Press 'f' to change filters."))
+		}
 		b.WriteString("\n")
 		return b.String()
 	}
 
-	for displayIdx, resourceIdx := range filtered {
+	for displayIdx, resourceIdx := range displayed {
 		m.resourceLineStarts[displayIdx] = lineCount
 		r := m.plan.Resources[resourceIdx]
 
 		isSelected := displayIdx == m.cursor
 		isExpanded := m.expanded[resourceIdx]
-		isMatch := false
-
-		for _, match := range m.searchMatches {
-			if match == displayIdx {
-				isMatch = true
-				break
-			}
-		}
+		isMatch := m.searchQuery != "" // when filtering, all displayed items match
 
 		if isSelected {
 			line := m.renderSelectedResourceLine(r, isExpanded, isMatch)
