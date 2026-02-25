@@ -85,6 +85,47 @@ func isNewFormat(lines []string) bool {
 	return false
 }
 
+func parseNewFormatAttrFromMatch(symbol, name, value string) *Attribute {
+	attr := &Attribute{Name: name}
+	switch symbol {
+	case "+":
+		attr.Action = ActionCreate
+		attr.NewValue = value
+	case "-":
+		attr.Action = ActionDestroy
+		attr.OldValue = value
+	case "~":
+		attr.Action = ActionUpdate
+		if strings.Contains(value, " -> ") {
+			parts := strings.SplitN(value, " -> ", 2)
+			attr.OldValue = strings.TrimSpace(parts[0])
+			attr.NewValue = strings.TrimSpace(parts[1])
+		} else {
+			attr.NewValue = value
+		}
+	}
+	if strings.Contains(value, "(known after apply)") {
+		attr.Computed = true
+	}
+	if strings.Contains(value, "(sensitive") {
+		attr.Sensitive = true
+	}
+	return attr
+}
+
+func parseNewFormatAttrSimple(symbol, content string) *Attribute {
+	attr := &Attribute{Name: content}
+	switch symbol {
+	case "+":
+		attr.Action = ActionCreate
+	case "-":
+		attr.Action = ActionDestroy
+	case "~":
+		attr.Action = ActionUpdate
+	}
+	return attr
+}
+
 // parseNewFormat parses Terraform 0.12+ format plans
 func parseNewFormat(plan *Plan, lines []string) {
 	resourceRegex := regexp.MustCompile(`^\s*#\s+(.+?)\s+(will be|must be|has been|is tainted)`)
@@ -97,29 +138,20 @@ func parseNewFormat(plan *Plan, lines []string) {
 
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
-
-		// Check for resource header
 		if match := resourceRegex.FindStringSubmatch(line); match != nil {
 			if currentResource != nil {
 				plan.Resources = append(plan.Resources, *currentResource)
 			}
-
 			address := strings.TrimSpace(match[1])
-			action := parseActionFromLine(line)
-
 			currentResource = &Resource{
 				Address:  address,
-				Action:   action,
+				Action:  parseActionFromLine(line),
 				RawLines: []string{line},
 			}
-
-			// Extract type and name from address
-			parts := strings.Split(address, ".")
-			if len(parts) >= 2 {
+			if parts := strings.Split(address, "."); len(parts) >= 2 {
 				currentResource.Type = parts[len(parts)-2]
 				currentResource.Name = parts[len(parts)-1]
 			}
-
 			inResourceBlock = true
 			braceCount = 0
 			continue
@@ -127,204 +159,98 @@ func parseNewFormat(plan *Plan, lines []string) {
 
 		if inResourceBlock && currentResource != nil {
 			currentResource.RawLines = append(currentResource.RawLines, line)
-
-			// Count braces to track block depth
 			braceCount += strings.Count(line, "{") - strings.Count(line, "}")
 
-			// Parse attributes
 			if match := attrRegex.FindStringSubmatch(line); match != nil {
-				symbol := match[1]
-				name := strings.TrimSpace(match[2])
-				value := strings.TrimSpace(match[3])
-
-				attr := Attribute{
-					Name: name,
-				}
-
-				switch symbol {
-				case "+":
-					attr.Action = ActionCreate
-					attr.NewValue = value
-				case "-":
-					attr.Action = ActionDestroy
-					attr.OldValue = value
-				case "~":
-					attr.Action = ActionUpdate
-					// Try to parse old -> new value
-					if strings.Contains(value, " -> ") {
-						parts := strings.SplitN(value, " -> ", 2)
-						attr.OldValue = strings.TrimSpace(parts[0])
-						attr.NewValue = strings.TrimSpace(parts[1])
-					} else {
-						attr.NewValue = value
-					}
-				}
-
-				// Check for computed or sensitive markers
-				if strings.Contains(value, "(known after apply)") {
-					attr.Computed = true
-				}
-				if strings.Contains(value, "(sensitive") {
-					attr.Sensitive = true
-				}
-
-				currentResource.Attributes = append(currentResource.Attributes, attr)
+				attr := parseNewFormatAttrFromMatch(match[1], strings.TrimSpace(match[2]), strings.TrimSpace(match[3]))
+				currentResource.Attributes = append(currentResource.Attributes, *attr)
 			} else if match := attrRegex2.FindStringSubmatch(line); match != nil {
-				// Simpler attribute format
-				symbol := match[1]
-				content := strings.TrimSpace(match[2])
-
-				attr := Attribute{
-					Name: content,
-				}
-
-				switch symbol {
-				case "+":
-					attr.Action = ActionCreate
-				case "-":
-					attr.Action = ActionDestroy
-				case "~":
-					attr.Action = ActionUpdate
-				}
-
-				currentResource.Attributes = append(currentResource.Attributes, attr)
+				attr := parseNewFormatAttrSimple(match[1], strings.TrimSpace(match[2]))
+				currentResource.Attributes = append(currentResource.Attributes, *attr)
 			}
 
-			// Check if resource block ended
 			if braceCount <= 0 && strings.TrimSpace(line) == "}" {
 				inResourceBlock = false
 			}
 		}
 	}
-
-	// Don't forget the last resource
 	if currentResource != nil {
 		plan.Resources = append(plan.Resources, *currentResource)
 	}
 }
 
+type oldFormatResourcePattern struct {
+	re       *regexp.Regexp
+	action   Action
+	noColon  bool // resource lines (not attribute lines) must not contain ":"
+}
+
+var oldFormatPatterns = []oldFormatResourcePattern{
+	{regexp.MustCompile(`^\+\s+(.+)$`), ActionCreate, true},
+	{regexp.MustCompile(`^-\s+(.+)$`), ActionDestroy, true},
+	{regexp.MustCompile(`^~\s+(.+)$`), ActionUpdate, true},
+	{regexp.MustCompile(`^-/\+\s+(.+)$`), ActionReplace, false},
+	{regexp.MustCompile(`^\+/-\s+(.+)$`), ActionCreateDelete, false},
+}
+
+func parseOldFormatResourceLine(line string) (address string, action Action, ok bool) {
+	for _, p := range oldFormatPatterns {
+		if p.noColon && strings.Contains(line, ":") {
+			continue
+		}
+		if match := p.re.FindStringSubmatch(line); match != nil {
+			return strings.TrimSpace(match[1]), p.action, true
+		}
+	}
+	return "", "", false
+}
+
+func parseOldFormatAttrLine(line string, res *Resource) *Attribute {
+	attrRegex := regexp.MustCompile(`^\s+([^:]+):\s*(.*)$`)
+	match := attrRegex.FindStringSubmatch(line)
+	if match == nil {
+		return nil
+	}
+	name := strings.TrimSpace(match[1])
+	value := strings.TrimSpace(match[2])
+	attr := &Attribute{Name: name}
+	if strings.Contains(value, " => ") {
+		parts := strings.SplitN(value, " => ", 2)
+		attr.OldValue = strings.TrimSpace(parts[0])
+		attr.NewValue = strings.TrimSpace(parts[1])
+		attr.Action = ActionUpdate
+	} else {
+		attr.NewValue = value
+		attr.Action = res.Action
+	}
+	if strings.Contains(value, "<computed>") {
+		attr.Computed = true
+	}
+	return attr
+}
+
 // parseOldFormat parses Terraform 0.11 and earlier format plans
 func parseOldFormat(plan *Plan, lines []string) {
-	// Old format patterns
-	createRegex := regexp.MustCompile(`^\+\s+(.+)$`)
-	destroyRegex := regexp.MustCompile(`^-\s+(.+)$`)
-	updateRegex := regexp.MustCompile(`^~\s+(.+)$`)
-	replaceRegex := regexp.MustCompile(`^-/\+\s+(.+)$`)
-	replaceRegex2 := regexp.MustCompile(`^\+/-\s+(.+)$`)
-	attrRegex := regexp.MustCompile(`^\s+([^:]+):\s*(.*)$`)
-
 	var currentResource *Resource
-
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
-
-		// Check for resource lines
-		if match := createRegex.FindStringSubmatch(line); match != nil && !strings.Contains(line, ":") {
+		if address, action, ok := parseOldFormatResourceLine(line); ok {
 			if currentResource != nil {
 				plan.Resources = append(plan.Resources, *currentResource)
 			}
-			address := strings.TrimSpace(match[1])
-			currentResource = &Resource{
-				Address:  address,
-				Action:   ActionCreate,
-				RawLines: []string{line},
-			}
+			currentResource = &Resource{Address: address, Action: action, RawLines: []string{line}}
 			parseResourceAddress(currentResource)
 			continue
 		}
-
-		if match := destroyRegex.FindStringSubmatch(line); match != nil && !strings.Contains(line, ":") {
-			if currentResource != nil {
-				plan.Resources = append(plan.Resources, *currentResource)
-			}
-			address := strings.TrimSpace(match[1])
-			currentResource = &Resource{
-				Address:  address,
-				Action:   ActionDestroy,
-				RawLines: []string{line},
-			}
-			parseResourceAddress(currentResource)
-			continue
-		}
-
-		if match := updateRegex.FindStringSubmatch(line); match != nil && !strings.Contains(line, ":") {
-			if currentResource != nil {
-				plan.Resources = append(plan.Resources, *currentResource)
-			}
-			address := strings.TrimSpace(match[1])
-			currentResource = &Resource{
-				Address:  address,
-				Action:   ActionUpdate,
-				RawLines: []string{line},
-			}
-			parseResourceAddress(currentResource)
-			continue
-		}
-
-		if match := replaceRegex.FindStringSubmatch(line); match != nil {
-			if currentResource != nil {
-				plan.Resources = append(plan.Resources, *currentResource)
-			}
-			address := strings.TrimSpace(match[1])
-			currentResource = &Resource{
-				Address:  address,
-				Action:   ActionReplace,
-				RawLines: []string{line},
-			}
-			parseResourceAddress(currentResource)
-			continue
-		}
-
-		if match := replaceRegex2.FindStringSubmatch(line); match != nil {
-			if currentResource != nil {
-				plan.Resources = append(plan.Resources, *currentResource)
-			}
-			address := strings.TrimSpace(match[1])
-			currentResource = &Resource{
-				Address:  address,
-				Action:   ActionCreateDelete,
-				RawLines: []string{line},
-			}
-			parseResourceAddress(currentResource)
-			continue
-		}
-
-		// Parse attributes for current resource
 		if currentResource != nil {
 			currentResource.RawLines = append(currentResource.RawLines, line)
-
-			if match := attrRegex.FindStringSubmatch(line); match != nil {
-				name := strings.TrimSpace(match[1])
-				value := strings.TrimSpace(match[2])
-
-				attr := Attribute{
-					Name: name,
-				}
-
-				// Check for change indicator
-				if strings.Contains(value, " => ") {
-					parts := strings.SplitN(value, " => ", 2)
-					attr.OldValue = strings.TrimSpace(parts[0])
-					attr.NewValue = strings.TrimSpace(parts[1])
-					attr.Action = ActionUpdate
-				} else {
-					attr.NewValue = value
-					attr.Action = currentResource.Action
-				}
-
-				if strings.Contains(value, "<computed>") {
-					attr.Computed = true
-				}
-
-				currentResource.Attributes = append(currentResource.Attributes, attr)
+			if attr := parseOldFormatAttrLine(line, currentResource); attr != nil {
+				currentResource.Attributes = append(currentResource.Attributes, *attr)
 			}
 		}
 	}
-
-	// Don't forget the last resource
 	if currentResource != nil {
 		plan.Resources = append(plan.Resources, *currentResource)
 	}

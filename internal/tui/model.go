@@ -13,6 +13,7 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/CaptShanks/terraprism/internal/parser"
+	"github.com/CaptShanks/terraprism/internal/updater"
 )
 
 // Model represents the TUI state
@@ -49,6 +50,15 @@ type Model struct {
 	sortOrder   SortOrder // default, byAction, byAddress, byType
 	sorting     bool      // sort picker is open
 	sortCursor  int       // cursor in sort picker
+
+	// Update nudge
+	currentVersion  string // for update check
+	updateAvailable string // non-empty when newer version available
+}
+
+// UpdateAvailableMsg is sent when an update check finds a newer version.
+type UpdateAvailableMsg struct {
+	Version string
 }
 
 // SortOrder defines how resources are ordered
@@ -143,40 +153,42 @@ func (m *Model) sortedResources() []int {
 }
 
 // NewModel creates a new TUI model (view-only mode)
-func NewModel(plan *parser.Plan) Model {
+func NewModel(plan *parser.Plan, version string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
 	ti.CharLimit = 100
 	ti.Width = 40
 
 	return Model{
-		plan:          plan,
-		expanded:      make(map[int]bool),
-		searchInput:   ti,
-		searchMatches: []int{},
-		applyMode:     false,
-		statusFilters: nil, // nil = show all
-		sortOrder:     SortDefault,
+		plan:           plan,
+		expanded:       make(map[int]bool),
+		searchInput:    ti,
+		searchMatches:  []int{},
+		applyMode:      false,
+		statusFilters:  nil, // nil = show all
+		sortOrder:      SortDefault,
+		currentVersion: version,
 	}
 }
 
 // NewModelWithApply creates a TUI model with apply capability
-func NewModelWithApply(plan *parser.Plan, planFile, tfCommand string) Model {
+func NewModelWithApply(plan *parser.Plan, planFile, tfCommand, version string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
 	ti.CharLimit = 100
 	ti.Width = 40
 
 	return Model{
-		plan:          plan,
-		expanded:      make(map[int]bool),
-		searchInput:   ti,
-		searchMatches: []int{},
-		applyMode:     true,
-		planFile:      planFile,
-		tfCommand:     tfCommand,
-		statusFilters: nil, // nil = show all
-		sortOrder:     SortDefault,
+		plan:           plan,
+		expanded:       make(map[int]bool),
+		searchInput:    ti,
+		searchMatches:  []int{},
+		applyMode:      true,
+		planFile:       planFile,
+		tfCommand:      tfCommand,
+		statusFilters:  nil, // nil = show all
+		sortOrder:      SortDefault,
+		currentVersion: version,
 	}
 }
 
@@ -187,7 +199,21 @@ func (m Model) ShouldApply() bool {
 
 // Init initializes the model
 func (m Model) Init() tea.Cmd {
-	return nil
+	if m.currentVersion == "" || updater.IsSkipUpdateCheck() {
+		return nil
+	}
+	return checkUpdateCmd(m.currentVersion)
+}
+
+// checkUpdateCmd runs an async update check and sends UpdateAvailableMsg if an update is available.
+func checkUpdateCmd(version string) tea.Cmd {
+	return func() tea.Msg {
+		latest, hasUpdate, err := updater.CheckLatestWithCache(version, updater.UpdateCheckIntervalDays())
+		if err != nil || !hasUpdate {
+			return nil
+		}
+		return UpdateAvailableMsg{Version: latest}
+	}
 }
 
 // Update handles messages
@@ -196,12 +222,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case UpdateAvailableMsg:
+		m.updateAvailable = msg.Version
+		// Resize viewport to account for the extra footer line
+		if m.ready && m.height > 0 {
+			headerHeight := 4
+			footerHeight := 4 // help + nudge
+			m.viewport.Height = m.height - headerHeight - footerHeight
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 
 		headerHeight := 4 // Title + summary + blank line
 		footerHeight := 3 // Help text
+		if m.updateAvailable != "" {
+			footerHeight = 4 // +1 for update nudge line
+		}
 
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width-4, msg.Height-headerHeight-footerHeight)
@@ -249,154 +288,226 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// normalKeyHandler handles a single key in normal mode. Returns (model, cmd, quit).
+type normalKeyHandler func(m Model) (Model, tea.Cmd, bool)
+
+var normalKeyHandlers = map[string]normalKeyHandler{
+	"q": func(m Model) (Model, tea.Cmd, bool) { return m, tea.Quit, true },
+	"ctrl+c": func(m Model) (Model, tea.Cmd, bool) { return m, tea.Quit, true },
+	"up":    handleKeyUp,
+	"k":     handleKeyUp,
+	"down":  handleKeyDown,
+	"j":     handleKeyDown,
+	"enter": handleKeyEnter,
+	" ":     handleKeyEnter,
+	"e":     handleKeyExpandAll,
+	"c":     handleKeyCollapseAll,
+	"f":     handleKeyFilter,
+	"s":     handleKeySort,
+	"/":     handleKeySearch,
+	"n":     handleKeyNextMatch,
+	"N":     handleKeyPrevMatch,
+	"esc":   handleKeyEsc,
+	"backspace": handleKeyCollapseCurrent,
+	"h":     handleKeyCollapseCurrent,
+	"left":  handleKeyCollapseCurrent,
+	"d":     handleKeyHalfPageDown,
+	"ctrl+d": handleKeyHalfPageDown,
+	"u":     handleKeyHalfPageUp,
+	"ctrl+u": handleKeyHalfPageUp,
+	"g":     handleKeyG,
+	"G":     handleKeyGG,
+	"pgup":  handleKeyPgUp,
+	"pgdown": handleKeyPgDown,
+	"l":     handleKeyExpandCurrent,
+	"right": handleKeyExpandCurrent,
+	"a":     handleKeyApply,
+	"y":     handleKeyConfirmApply,
+}
+
+func handleKeyUp(m Model) (Model, tea.Cmd, bool) {
+	if m.cursor > 0 {
+		m.cursor--
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+	} else {
+		m.viewport.SetYOffset(m.viewport.YOffset - 1)
+	}
+	return m, nil, true
+}
+
+func handleKeyDown(m Model) (Model, tea.Cmd, bool) {
+	filtered := m.sortedResources()
+	if m.cursor < len(filtered)-1 {
+		m.cursor++
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+	} else {
+		m.viewport.SetYOffset(m.viewport.YOffset + 1)
+	}
+	return m, nil, true
+}
+
+func handleKeyEnter(m Model) (Model, tea.Cmd, bool) {
+	filtered := m.sortedResources()
+	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
+		resourceIdx := filtered[m.cursor]
+		m.expanded[resourceIdx] = !m.expanded[resourceIdx]
+	}
+	m.updateViewportContent()
+	m.scrollForExpanded()
+	return m, nil, true
+}
+
+func handleKeyExpandAll(m Model) (Model, tea.Cmd, bool) {
+	m.expandAll()
+	return m, nil, true
+}
+
+func handleKeyCollapseAll(m Model) (Model, tea.Cmd, bool) {
+	m.collapseAll()
+	return m, nil, true
+}
+
+func handleKeyFilter(m Model) (Model, tea.Cmd, bool) {
+	m.filtering = true
+	m.filterCursor = 0
+	if m.statusFilters == nil {
+		m.statusFilters = make(map[parser.Action]bool)
+	}
+	return m, nil, true
+}
+
+func handleKeySort(m Model) (Model, tea.Cmd, bool) {
+	m.sorting = true
+	m.sortCursor = 0
+	for i, opt := range sortOptions {
+		if opt == m.sortOrder {
+			m.sortCursor = i
+			break
+		}
+	}
+	return m, nil, true
+}
+
+func handleKeySearch(m Model) (Model, tea.Cmd, bool) {
+	m.searching = true
+	m.searchInput.Focus()
+	return m, textinput.Blink, true
+}
+
+func handleKeyNextMatch(m Model) (Model, tea.Cmd, bool) {
+	m.nextMatch()
+	return m, nil, true
+}
+
+func handleKeyPrevMatch(m Model) (Model, tea.Cmd, bool) {
+	m.prevMatch()
+	return m, nil, true
+}
+
+func handleKeyEsc(m Model) (Model, tea.Cmd, bool) {
+	if len(m.statusFilters) > 0 {
+		m.statusFilters = nil
+		m.clampCursorAndRefreshSearch()
+		m.updateViewportContent()
+	} else {
+		m.clearSearch()
+	}
+	return m, nil, true
+}
+
+func handleKeyCollapseCurrent(m Model) (Model, tea.Cmd, bool) {
+	filtered := m.sortedResources()
+	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
+		m.expanded[filtered[m.cursor]] = false
+	}
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+	return m, nil, true
+}
+
+func handleKeyHalfPageDown(m Model) (Model, tea.Cmd, bool) {
+	m.scrollHalfPageDown()
+	return m, nil, true
+}
+
+func handleKeyHalfPageUp(m Model) (Model, tea.Cmd, bool) {
+	m.scrollHalfPageUp()
+	return m, nil, true
+}
+
+func handleKeyG(m Model) (Model, tea.Cmd, bool) {
+	m.handleGKey()
+	return m, nil, true
+}
+
+func handleKeyGG(m Model) (Model, tea.Cmd, bool) {
+	m.gotoBottom()
+	return m, nil, true
+}
+
+func handleKeyPgUp(m Model) (Model, tea.Cmd, bool) {
+	m.viewport.GotoTop()
+	m.viewport.SetYOffset(m.viewport.YOffset - m.viewport.Height)
+	return m, nil, true
+}
+
+func handleKeyPgDown(m Model) (Model, tea.Cmd, bool) {
+	m.viewport.SetYOffset(m.viewport.YOffset + m.viewport.Height)
+	return m, nil, true
+}
+
+func handleKeyExpandCurrent(m Model) (Model, tea.Cmd, bool) {
+	filtered := m.sortedResources()
+	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
+		m.expanded[filtered[m.cursor]] = true
+	}
+	m.updateViewportContent()
+	m.scrollForExpanded()
+	return m, nil, true
+}
+
+func handleKeyApply(m Model) (Model, tea.Cmd, bool) {
+	if m.applyMode {
+		if m.confirmApply {
+			m.shouldApply = true
+			return m, tea.Quit, true
+		}
+		m.confirmApply = true
+		m.updateViewportContent()
+	}
+	return m, nil, true
+}
+
+func handleKeyConfirmApply(m Model) (Model, tea.Cmd, bool) {
+	if m.applyMode && m.confirmApply {
+		m.shouldApply = true
+		return m, tea.Quit, true
+	}
+	return m, nil, true
+}
+
 // handleNormalKey handles key presses in normal (non-search) mode
 func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Reset pending g if any other key is pressed (except g itself)
-	if msg.String() != "g" && msg.String() != "G" {
+	key := msg.String()
+	if key != "g" && key != "G" {
 		m.pendingG = false
 	}
 
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
-
-	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
-			m.updateViewportContent()
-			m.ensureCursorVisible()
-		} else {
-			m.viewport.SetYOffset(m.viewport.YOffset - 1)
+	if handler, ok := normalKeyHandlers[key]; ok {
+		newM, cmd, _ := handler(m)
+		if m.confirmApply && key != "a" && key != "y" {
+			newM.confirmApply = false
+			newM.updateViewportContent()
 		}
-
-	case "down", "j":
-		filtered := m.sortedResources()
-		if m.cursor < len(filtered)-1 {
-			m.cursor++
-			m.updateViewportContent()
-			m.ensureCursorVisible()
-		} else {
-			m.viewport.SetYOffset(m.viewport.YOffset + 1)
-		}
-
-	case "enter", " ":
-		filtered := m.sortedResources()
-		if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
-			resourceIdx := filtered[m.cursor]
-			m.expanded[resourceIdx] = !m.expanded[resourceIdx]
-		}
-		m.updateViewportContent()
-		m.scrollForExpanded()
-
-	case "e":
-		m.expandAll()
-
-	case "c":
-		m.collapseAll()
-
-	case "f":
-		m.filtering = true
-		m.filterCursor = 0
-		// Ensure statusFilters map exists when opening picker
-		if m.statusFilters == nil {
-			m.statusFilters = make(map[parser.Action]bool)
-		}
-		return m, nil
-
-	case "s":
-		m.sorting = true
-		// Set sortCursor to current sort order
-		m.sortCursor = 0
-		for i, opt := range sortOptions {
-			if opt == m.sortOrder {
-				m.sortCursor = i
-				break
-			}
-		}
-		return m, nil
-
-	case "/":
-		m.searching = true
-		m.searchInput.Focus()
-		return m, textinput.Blink
-
-	case "n":
-		m.nextMatch()
-
-	case "N":
-		m.prevMatch()
-
-	case "esc":
-		if len(m.statusFilters) > 0 {
-			m.statusFilters = nil
-			m.clampCursorAndRefreshSearch()
-			m.updateViewportContent()
-		} else {
-			m.clearSearch()
-		}
-
-	case "backspace", "h", "left":
-		filtered := m.sortedResources()
-		if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
-			m.expanded[filtered[m.cursor]] = false
-		}
-		m.updateViewportContent()
-		m.ensureCursorVisible()
-
-	case "d", "ctrl+d":
-		m.scrollHalfPageDown()
-
-	case "u", "ctrl+u":
-		m.scrollHalfPageUp()
-
-	case "g":
-		m.handleGKey()
-
-	case "G":
-		m.gotoBottom()
-
-	case "pgup":
-		m.viewport.GotoTop()
-		m.viewport.SetYOffset(m.viewport.YOffset - m.viewport.Height)
-
-	case "pgdown":
-		m.viewport.SetYOffset(m.viewport.YOffset + m.viewport.Height)
-
-	case "l", "right":
-		filtered := m.sortedResources()
-		if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
-			m.expanded[filtered[m.cursor]] = true
-		}
-		m.updateViewportContent()
-		m.scrollForExpanded()
-
-	case "a":
-		// Apply (only in apply mode)
-		if m.applyMode {
-			if m.confirmApply {
-				// Already confirming, execute apply
-				m.shouldApply = true
-				return m, tea.Quit
-			}
-			// Start confirmation
-			m.confirmApply = true
-			m.updateViewportContent()
-		}
-
-	case "y":
-		// Confirm apply
-		if m.applyMode && m.confirmApply {
-			m.shouldApply = true
-			return m, tea.Quit
-		}
+		return newM, cmd
 	}
 
-	// Cancel confirmation on any other key if confirming
-	if m.confirmApply && msg.String() != "a" && msg.String() != "y" {
+	if m.confirmApply {
 		m.confirmApply = false
 		m.updateViewportContent()
 	}
-
 	return m, nil
 }
 
@@ -830,31 +941,82 @@ func (m Model) wrapAndColorize(line string, action parser.Action, maxWidth int) 
 	return b.String()
 }
 
+// parseUserdataLinePrefix parses prefix and content from a trimmed line.
+func parseUserdataLinePrefix(trimmed string, action parser.Action) (rawPrefix, content string, lineAction parser.Action) {
+	switch {
+	case strings.HasPrefix(trimmed, "+ "):
+		return "+ ", trimmed[2:], parser.ActionCreate
+	case strings.HasPrefix(trimmed, "- "):
+		return "- ", trimmed[2:], parser.ActionDestroy
+	case strings.HasPrefix(trimmed, "~ "):
+		return "~ ", trimmed[2:], parser.ActionUpdate
+	default:
+		return "  ", trimmed, action
+	}
+}
+
+func (m Model) renderUserdataDiff(oldB64, newB64, key, decodedIndent string, headerLine string, maxWidth int) string {
+	oldDecoded, oldOk := TryDecodeUserdata(oldB64)
+	newDecoded, newOk := TryDecodeUserdata(newB64)
+	if !oldOk && !newOk {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(headerLine)
+	b.WriteString("\n")
+	b.WriteString(decodedIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ decoded " + key + " ┄┄┄"))
+	b.WriteString("\n")
+	if oldOk && newOk {
+		oldLines := strings.Split(oldDecoded, "\n")
+		newLines := strings.Split(newDecoded, "\n")
+		diff := ComputeDiff(oldLines, newLines)
+		contextDiff := ContextDiff(diff, 3)
+		if contextDiff == nil {
+			b.WriteString(decodedIndent)
+			b.WriteString(mutedColor.Render("  (no changes in decoded content)"))
+			b.WriteString("\n")
+		} else {
+			renderDiffLines(&b, contextDiff, decodedIndent, maxWidth)
+		}
+	} else {
+		if oldOk {
+			for _, ol := range strings.Split(oldDecoded, "\n") {
+				b.WriteString(decodedIndent)
+				b.WriteString(lipgloss.NewStyle().Foreground(destroyColor).Render("- " + ol))
+				b.WriteString("\n")
+			}
+		}
+		if newOk {
+			for _, nl := range strings.Split(newDecoded, "\n") {
+				b.WriteString(decodedIndent)
+				b.WriteString(lipgloss.NewStyle().Foreground(createColor).Render("+ " + nl))
+				b.WriteString("\n")
+			}
+		}
+	}
+	b.WriteString(decodedIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ end " + key + " ┄┄┄"))
+	return b.String()
+}
+
+func userdataLineStyle(lineAction parser.Action) lipgloss.Style {
+	switch lineAction {
+	case parser.ActionCreate:
+		return lipgloss.NewStyle().Foreground(createColor)
+	case parser.ActionDestroy:
+		return lipgloss.NewStyle().Foreground(destroyColor)
+	default:
+		return lipgloss.NewStyle().Foreground(textColor)
+	}
+}
+
 // tryRenderUserdata detects user_data attributes with base64 content and
 // renders them decoded with diff highlighting for changes.
 func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int) (string, bool) {
 	trimmed := strings.TrimLeft(line, " \t")
 	indent := line[:len(line)-len(trimmed)]
-
-	var rawPrefix string
-	content := trimmed
-	lineAction := action
-	switch {
-	case strings.HasPrefix(trimmed, "+ "):
-		rawPrefix = "+ "
-		content = trimmed[2:]
-		lineAction = parser.ActionCreate
-	case strings.HasPrefix(trimmed, "- "):
-		rawPrefix = "- "
-		content = trimmed[2:]
-		lineAction = parser.ActionDestroy
-	case strings.HasPrefix(trimmed, "~ "):
-		rawPrefix = "~ "
-		content = trimmed[2:]
-		lineAction = parser.ActionUpdate
-	default:
-		rawPrefix = "  "
-	}
+	rawPrefix, content, lineAction := parseUserdataLinePrefix(trimmed, action)
 
 	eqIdx := strings.Index(content, " = ")
 	if eqIdx < 0 {
@@ -865,8 +1027,6 @@ func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int
 		return "", false
 	}
 	value := strings.TrimSpace(content[eqIdx+3:])
-
-	var b strings.Builder
 	decodedIndent := indent + strings.Repeat(" ", len(rawPrefix))
 	headerLine := m.colorizeHCLLine(line, action)
 
@@ -874,52 +1034,11 @@ func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int
 		parts := strings.SplitN(value, " -> ", 2)
 		oldB64 := unquote(strings.TrimSpace(parts[0]))
 		newB64 := unquote(strings.TrimSpace(parts[1]))
-
-		oldDecoded, oldOk := TryDecodeUserdata(oldB64)
-		newDecoded, newOk := TryDecodeUserdata(newB64)
-
-		if !oldOk && !newOk {
+		rendered := m.renderUserdataDiff(oldB64, newB64, key, decodedIndent, headerLine, maxWidth)
+		if rendered == "" {
 			return "", false
 		}
-
-		b.WriteString(headerLine)
-		b.WriteString("\n")
-		b.WriteString(decodedIndent)
-		b.WriteString(mutedColor.Render("┄┄┄ decoded " + key + " ┄┄┄"))
-		b.WriteString("\n")
-
-		if oldOk && newOk {
-			oldLines := strings.Split(oldDecoded, "\n")
-			newLines := strings.Split(newDecoded, "\n")
-			diff := ComputeDiff(oldLines, newLines)
-			contextDiff := ContextDiff(diff, 3)
-			if contextDiff == nil {
-				b.WriteString(decodedIndent)
-				b.WriteString(mutedColor.Render("  (no changes in decoded content)"))
-				b.WriteString("\n")
-			} else {
-				renderDiffLines(&b, contextDiff, decodedIndent, maxWidth)
-			}
-		} else {
-			if oldOk {
-				for _, ol := range strings.Split(oldDecoded, "\n") {
-					b.WriteString(decodedIndent)
-					b.WriteString(lipgloss.NewStyle().Foreground(destroyColor).Render("- " + ol))
-					b.WriteString("\n")
-				}
-			}
-			if newOk {
-				for _, nl := range strings.Split(newDecoded, "\n") {
-					b.WriteString(decodedIndent)
-					b.WriteString(lipgloss.NewStyle().Foreground(createColor).Render("+ " + nl))
-					b.WriteString("\n")
-				}
-			}
-		}
-
-		b.WriteString(decodedIndent)
-		b.WriteString(mutedColor.Render("┄┄┄ end " + key + " ┄┄┄"))
-		return b.String(), true
+		return rendered, true
 	}
 
 	raw := unquote(value)
@@ -928,19 +1047,13 @@ func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int
 		return "", false
 	}
 
+	var b strings.Builder
 	b.WriteString(headerLine)
 	b.WriteString("\n")
 	b.WriteString(decodedIndent)
 	b.WriteString(mutedColor.Render("┄┄┄ decoded " + key + " ┄┄┄"))
 	b.WriteString("\n")
-
-	style := lipgloss.NewStyle().Foreground(textColor)
-	if lineAction == parser.ActionCreate {
-		style = lipgloss.NewStyle().Foreground(createColor)
-	} else if lineAction == parser.ActionDestroy {
-		style = lipgloss.NewStyle().Foreground(destroyColor)
-	}
-
+	style := userdataLineStyle(lineAction)
 	for _, dl := range strings.Split(decoded, "\n") {
 		wrapped := wrapText(dl, maxWidth-len(decodedIndent)-2)
 		for _, wl := range strings.Split(wrapped, "\n") {
@@ -949,7 +1062,6 @@ func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int
 			b.WriteString("\n")
 		}
 	}
-
 	b.WriteString(decodedIndent)
 	b.WriteString(mutedColor.Render("┄┄┄ end " + key + " ┄┄┄"))
 	return b.String(), true
@@ -988,6 +1100,31 @@ func parseHeredocEnd(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// findHeredocBlockEnd returns the index past the end marker line, or -1 if not found.
+func findHeredocBlockEnd(lines []string, startIdx int, endMarker string) int {
+	for i := startIdx; i < len(lines); i++ {
+		lt := strings.TrimSpace(lines[i])
+		if lt == endMarker || lt == endMarker+"," {
+			return i + 1
+		}
+	}
+	return -1
+}
+
+// findAddHeredocStart finds the "+ <<-EOT" line, skipping blank lines. Returns -1 if not found.
+func findAddHeredocStart(lines []string, fromIdx int) int {
+	for i := fromIdx; i < len(lines); i++ {
+		at := strings.TrimLeft(lines[i], " \t")
+		if strings.HasPrefix(at, "+ ") && isHeredocMarker(at[2:]) {
+			return i
+		}
+		if strings.TrimSpace(lines[i]) != "" {
+			return -1
+		}
+	}
+	return -1
+}
+
 // renderHeredocPairDiff handles paired heredoc blocks where content lines
 // inside the heredoc do NOT have individual +/- prefixes.
 func (m Model) renderHeredocPairDiff(lines []string, idx int, maxWidth int) (int, string) {
@@ -997,52 +1134,23 @@ func (m Model) renderHeredocPairDiff(lines []string, idx int, maxWidth int) (int
 		return 0, ""
 	}
 
-	oldStart := idx + 1
-	oldEnd := oldStart
-	for oldEnd < len(lines) {
-		lt := strings.TrimSpace(lines[oldEnd])
-		if lt == endMarker || lt == endMarker+"," {
-			oldEnd++
-			break
-		}
-		oldEnd++
-	}
-
-	if oldEnd >= len(lines) {
+	oldEnd := findHeredocBlockEnd(lines, idx+1, endMarker)
+	if oldEnd < 0 {
 		return 0, ""
 	}
 
-	addHeredocIdx := oldEnd
-	for addHeredocIdx < len(lines) {
-		at := strings.TrimLeft(lines[addHeredocIdx], " \t")
-		if strings.HasPrefix(at, "+ ") && isHeredocMarker(at[2:]) {
-			break
-		}
-		if strings.TrimSpace(lines[addHeredocIdx]) == "" {
-			addHeredocIdx++
-			continue
-		}
+	addHeredocIdx := findAddHeredocStart(lines, oldEnd)
+	if addHeredocIdx < 0 {
 		return 0, ""
 	}
 
-	if addHeredocIdx >= len(lines) {
+	newEnd := findHeredocBlockEnd(lines, addHeredocIdx+1, endMarker)
+	if newEnd < 0 {
 		return 0, ""
 	}
 
-	newStart := addHeredocIdx + 1
-	newEnd := newStart
-	for newEnd < len(lines) {
-		lt := strings.TrimSpace(lines[newEnd])
-		if lt == endMarker || lt == endMarker+"," {
-			newEnd++
-			break
-		}
-		newEnd++
-	}
-
-	oldContent := extractHeredocContent(lines[oldStart : oldEnd-1])
-	newContent := extractHeredocContent(lines[newStart : newEnd-1])
-
+	oldContent := extractHeredocContent(lines[idx+1 : oldEnd-1])
+	newContent := extractHeredocContent(lines[addHeredocIdx+1 : newEnd-1])
 	if len(oldContent) == 0 && len(newContent) == 0 {
 		return 0, ""
 	}
@@ -1054,18 +1162,14 @@ func (m Model) renderHeredocPairDiff(lines []string, idx int, maxWidth int) (int
 	}
 
 	baseIndent := extractIndent(lines[idx])
-
 	var b strings.Builder
 	b.WriteString(baseIndent)
 	b.WriteString(mutedColor.Render("┄┄┄ heredoc diff ┄┄┄"))
 	b.WriteString("\n")
-
 	renderDiffLines(&b, contextDiff, baseIndent, maxWidth)
-
 	b.WriteString(baseIndent)
 	b.WriteString(mutedColor.Render("┄┄┄ end heredoc diff ┄┄┄"))
 	b.WriteString("\n")
-
 	return newEnd - idx, b.String()
 }
 
@@ -1495,20 +1599,58 @@ func filterActionLabel(action parser.Action) string {
 	}
 }
 
-// View renders the UI
-func (m Model) View() string {
-	if !m.ready {
-		return "Loading..."
-	}
-
+// viewFilterPicker renders the filter picker overlay (returns full view, caller returns early).
+func (m Model) viewFilterPicker() string {
 	var b strings.Builder
-
-	// Header
-	header := headerStyle.Render("🔺 Terra-Prism - Terraform Plan Viewer")
-	b.WriteString(header)
+	b.WriteString(searchStyle.Render("Filter by status (Space: toggle, a: all, c: clear, Enter: apply, Esc: clear all and close)"))
+	b.WriteString("\n\n")
+	for i, action := range filterableActions {
+		checked := "[ ]"
+		if m.statusFilters != nil && m.statusFilters[action] {
+			checked = "[x]"
+		}
+		label := filterActionLabel(action)
+		rowStyle := lipgloss.NewStyle().Foreground(textColor)
+		if i == m.filterCursor {
+			rowStyle = rowStyle.Background(selectedBg)
+		}
+		labelStyle := GetResourceStyle(string(action))
+		b.WriteString(rowStyle.Render("  "+checked+" ") + labelStyle.Render(label))
+		b.WriteString("\n")
+	}
 	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("j/k: navigate • Space: toggle • a: select all • c: clear all • Enter: apply • Esc: clear all and close"))
+	return appStyle.Render(b.String())
+}
 
-	// Summary
+// viewSortPicker renders the sort picker overlay (returns full view, caller returns early).
+func (m Model) viewSortPicker() string {
+	var b strings.Builder
+	b.WriteString(searchStyle.Render("Sort by (Enter/Space: select, Esc: close)"))
+	b.WriteString("\n\n")
+	for i, opt := range sortOptions {
+		marker := "  "
+		if opt == m.sortOrder {
+			marker = "● "
+		}
+		rowStyle := lipgloss.NewStyle().Foreground(textColor)
+		if i == m.sortCursor {
+			rowStyle = rowStyle.Background(selectedBg)
+		}
+		line := marker + sortOrderLabel(opt) + " " + mutedColor.Render(sortOrderHint(opt))
+		b.WriteString(rowStyle.Render(line))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("j/k: navigate • Enter/Space: select • Esc: close"))
+	return appStyle.Render(b.String())
+}
+
+// viewHeader renders the header and summary.
+func (m Model) viewHeader() string {
+	var b strings.Builder
+	b.WriteString(headerStyle.Render("🔺 Terra-Prism - Terraform Plan Viewer"))
+	b.WriteString("\n")
 	if m.plan.Summary != "" {
 		summary := fmt.Sprintf("  %s to add, %s to change, %s to destroy",
 			lipgloss.NewStyle().Foreground(createColor).Render(fmt.Sprintf("%d", m.plan.TotalAdd)),
@@ -1520,116 +1662,101 @@ func (m Model) View() string {
 		b.WriteString(summaryStyle.Render(fmt.Sprintf("  %d resources with changes", len(m.plan.Resources))))
 	}
 	b.WriteString("\n\n")
+	return b.String()
+}
 
-	// Filter picker (when open)
-	if m.filtering {
-		b.WriteString(searchStyle.Render("Filter by status (Space: toggle, a: all, c: clear, Enter: apply, Esc: clear all and close)"))
-		b.WriteString("\n\n")
-		for i, action := range filterableActions {
-			checked := "[ ]"
-			if m.statusFilters != nil && m.statusFilters[action] {
-				checked = "[x]"
-			}
-			label := filterActionLabel(action)
-			rowStyle := lipgloss.NewStyle().Foreground(textColor)
-			if i == m.filterCursor {
-				rowStyle = rowStyle.Background(selectedBg)
-			}
-			// Color the label by action type
-			labelStyle := GetResourceStyle(string(action))
-			b.WriteString(rowStyle.Render("  "+checked+" ") + labelStyle.Render(label))
-			b.WriteString("\n")
+// viewFilterStatus renders the filter status line when filters are active.
+func (m Model) viewFilterStatus() string {
+	if len(m.statusFilters) == 0 {
+		return ""
+	}
+	var labels []string
+	for _, action := range filterableActions {
+		if m.statusFilters[action] {
+			labels = append(labels, filterActionLabel(action))
 		}
-		b.WriteString("\n")
-		b.WriteString(helpStyle.Render("j/k: navigate • Space: toggle • a: select all • c: clear all • Enter: apply • Esc: clear all and close"))
-		return appStyle.Render(b.String())
 	}
+	return searchStyle.Render(fmt.Sprintf("Filter: %s (%d active) • f: change • Esc: clear all", strings.Join(labels, ", "), len(labels))) + "\n\n"
+}
 
-	// Sort picker (when open)
-	if m.sorting {
-		b.WriteString(searchStyle.Render("Sort by (Enter/Space: select, Esc: close)"))
-		b.WriteString("\n\n")
-		for i, opt := range sortOptions {
-			marker := "  "
-			if opt == m.sortOrder {
-				marker = "● "
-			}
-			rowStyle := lipgloss.NewStyle().Foreground(textColor)
-			if i == m.sortCursor {
-				rowStyle = rowStyle.Background(selectedBg)
-			}
-			line := marker + sortOrderLabel(opt) + " " + mutedColor.Render(sortOrderHint(opt))
-			b.WriteString(rowStyle.Render(line))
-			b.WriteString("\n")
-		}
-		b.WriteString("\n")
-		b.WriteString(helpStyle.Render("j/k: navigate • Enter/Space: select • Esc: close"))
-		return appStyle.Render(b.String())
+// viewSortStatus renders the sort status line when not default.
+func (m Model) viewSortStatus() string {
+	if m.sortOrder == SortDefault || m.sortOrder == "" {
+		return ""
 	}
+	return searchStyle.Render(fmt.Sprintf("Sort: %s • s: change", sortOrderLabel(m.sortOrder))) + "\n\n"
+}
 
-	// Filter status (when filters active, not in picker)
-	if len(m.statusFilters) > 0 {
-		var labels []string
-		for _, action := range filterableActions {
-			if m.statusFilters[action] {
-				labels = append(labels, filterActionLabel(action))
-			}
-		}
-		filterInfo := fmt.Sprintf("Filter: %s (%d active) • f: change • Esc: clear all", strings.Join(labels, ", "), len(labels))
-		b.WriteString(searchStyle.Render(filterInfo))
-		b.WriteString("\n\n")
-	}
-
-	// Sort status (when not default, not in picker)
-	if m.sortOrder != SortDefault && m.sortOrder != "" {
-		sortInfo := fmt.Sprintf("Sort: %s • s: change", sortOrderLabel(m.sortOrder))
-		b.WriteString(searchStyle.Render(sortInfo))
-		b.WriteString("\n\n")
-	}
-
-	// Search bar (if active)
+// viewSearchBar renders the search bar or match info.
+func (m Model) viewSearchBar() string {
 	if m.searching {
-		b.WriteString(searchStyle.Render("Search: "))
-		b.WriteString(m.searchInput.View())
-		b.WriteString("\n\n")
-	} else if m.searchQuery != "" {
-		matchInfo := fmt.Sprintf("Search: %q (%d/%d matches)", m.searchQuery, m.currentMatch+1, len(m.searchMatches))
-		b.WriteString(searchStyle.Render(matchInfo))
-		b.WriteString("\n\n")
+		return searchStyle.Render("Search: ") + m.searchInput.View() + "\n\n"
 	}
-
-	// Confirmation prompt (if confirming apply)
-	if m.confirmApply {
-		confirmStyle := lipgloss.NewStyle().
-			Background(lipgloss.Color("#f38ba8")).
-			Foreground(lipgloss.Color("#1e1e2e")).
-			Bold(true).
-			Padding(0, 2)
-		b.WriteString("\n")
-		b.WriteString(confirmStyle.Render("⚠️  Apply this plan? Press 'y' to confirm, any other key to cancel"))
-		b.WriteString("\n\n")
+	if m.searchQuery != "" {
+		return searchStyle.Render(fmt.Sprintf("Search: %q (%d/%d matches)", m.searchQuery, m.currentMatch+1, len(m.searchMatches))) + "\n\n"
 	}
+	return ""
+}
 
-	// Viewport with resources
-	b.WriteString(m.viewport.View())
-	b.WriteString("\n")
+// viewConfirmationPrompt renders the apply confirmation prompt.
+func (m Model) viewConfirmationPrompt() string {
+	if !m.confirmApply {
+		return ""
+	}
+	confirmStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#f38ba8")).
+		Foreground(lipgloss.Color("#1e1e2e")).
+		Bold(true).
+		Padding(0, 2)
+	return "\n" + confirmStyle.Render("⚠️  Apply this plan? Press 'y' to confirm, any other key to cancel") + "\n\n"
+}
 
-	// Help footer
-	var help string
+// viewHelpFooter returns the help footer text.
+func (m Model) viewHelpFooter() string {
 	if m.applyMode {
 		if m.confirmApply {
-			help = "y: confirm apply • any key: cancel"
-		} else {
-			applyHint := lipgloss.NewStyle().Foreground(createColor).Bold(true).Render("a: APPLY")
-			help = fmt.Sprintf("%s • j/k/↑↓: navigate • e/c: all • /: search • f: filter • s: sort • q: quit", applyHint)
+			return "y: confirm apply • any key: cancel"
 		}
-	} else {
-		help = "j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • f: filter • s: sort • q: quit"
-		if len(m.statusFilters) > 0 {
-			help += " • Esc: clear filter"
-		}
+		applyHint := lipgloss.NewStyle().Foreground(createColor).Bold(true).Render("a: APPLY")
+		return fmt.Sprintf("%s • j/k/↑↓: navigate • e/c: all • /: search • f: filter • s: sort • q: quit", applyHint)
 	}
-	b.WriteString(helpStyle.Render(help))
+	help := "j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • f: filter • s: sort • q: quit"
+	if len(m.statusFilters) > 0 {
+		help += " • Esc: clear filter"
+	}
+	return help
+}
 
+// viewUpdateNudge renders the update available nudge.
+func (m Model) viewUpdateNudge() string {
+	if m.updateAvailable == "" {
+		return ""
+	}
+	nudgeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Italic(true)
+	return "\n" + nudgeStyle.Render(fmt.Sprintf("Update available: v%s. Run 'terraprism upgrade' to update.", m.updateAvailable))
+}
+
+// View renders the UI
+func (m Model) View() string {
+	if !m.ready {
+		return "Loading..."
+	}
+	if m.filtering {
+		return m.viewFilterPicker()
+	}
+	if m.sorting {
+		return m.viewSortPicker()
+	}
+
+	var b strings.Builder
+	b.WriteString(m.viewHeader())
+	b.WriteString(m.viewFilterStatus())
+	b.WriteString(m.viewSortStatus())
+	b.WriteString(m.viewSearchBar())
+	b.WriteString(m.viewConfirmationPrompt())
+	b.WriteString(m.viewport.View())
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render(m.viewHelpFooter()))
+	b.WriteString(m.viewUpdateNudge())
 	return appStyle.Render(b.String())
 }

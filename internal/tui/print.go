@@ -137,59 +137,25 @@ func colorizeKeyValue(key, value string, action parser.Action) string {
 	return keyStyle.Render(key) + " = " + colorizeValue(value, action)
 }
 
-func colorizeValue(value string, action parser.Action) string {
-	value = strings.TrimSpace(value)
+func colorizeValueComputed(value string) string {
+	return lipgloss.NewStyle().Foreground(computedColor).Italic(true).Render(value)
+}
 
-	// Check for (known after apply)
-	if strings.Contains(value, "(known after apply)") {
-		return lipgloss.NewStyle().Foreground(computedColor).Italic(true).Render(value)
-	}
+func colorizeValueSensitive(value string) string {
+	return lipgloss.NewStyle().Foreground(replaceColor).Italic(true).Render(value)
+}
 
-	// Check for (sensitive value)
-	if strings.Contains(value, "(sensitive") {
-		return lipgloss.NewStyle().Foreground(replaceColor).Italic(true).Render(value)
-	}
+func colorizeValueChangeArrow(value string) string {
+	parts := strings.SplitN(value, " -> ", 2)
+	oldVal := strings.TrimSpace(parts[0])
+	newVal := strings.TrimSpace(parts[1])
+	oldStyle := lipgloss.NewStyle().Foreground(destroyColor)
+	newStyle := lipgloss.NewStyle().Foreground(createColor)
+	arrowStyle := lipgloss.NewStyle().Foreground(mutedColorVal)
+	return oldStyle.Render(oldVal) + arrowStyle.Render(" → ") + newStyle.Render(newVal)
+}
 
-	// Check for change arrow: "old" -> "new" or old -> new
-	if strings.Contains(value, " -> ") {
-		parts := strings.SplitN(value, " -> ", 2)
-		oldVal := strings.TrimSpace(parts[0])
-		newVal := strings.TrimSpace(parts[1])
-
-		oldStyle := lipgloss.NewStyle().Foreground(destroyColor)
-		newStyle := lipgloss.NewStyle().Foreground(createColor)
-		arrowStyle := lipgloss.NewStyle().Foreground(mutedColorVal)
-
-		return oldStyle.Render(oldVal) + arrowStyle.Render(" → ") + newStyle.Render(newVal)
-	}
-
-	// Check for null
-	if value == "null" {
-		return lipgloss.NewStyle().Foreground(destroyColor).Render(value)
-	}
-
-	// Check for boolean
-	if value == "true" || value == "false" {
-		return lipgloss.NewStyle().Foreground(readColor).Render(value)
-	}
-
-	// Check for numbers
-	numberPattern := regexp.MustCompile(`^-?[0-9]+\.?[0-9]*$`)
-	if numberPattern.MatchString(value) {
-		return lipgloss.NewStyle().Foreground(updateColor).Render(value)
-	}
-
-	// Check for strings (quoted)
-	if len(value) > 1 && value[0] == '"' {
-		return lipgloss.NewStyle().Foreground(createColor).Render(value)
-	}
-
-	// Check for opening brace/bracket (start of nested structure)
-	if value == "{" || value == "[" || strings.HasSuffix(value, "{") || strings.HasSuffix(value, "[") {
-		return lipgloss.NewStyle().Foreground(mutedColorVal).Render(value)
-	}
-
-	// Default based on action
+func colorizeValueByAction(value string, action parser.Action) string {
 	switch action {
 	case parser.ActionCreate:
 		return lipgloss.NewStyle().Foreground(createColor).Render(value)
@@ -200,6 +166,35 @@ func colorizeValue(value string, action parser.Action) string {
 	default:
 		return lipgloss.NewStyle().Foreground(textColor).Render(value)
 	}
+}
+
+func colorizeValue(value string, action parser.Action) string {
+	value = strings.TrimSpace(value)
+	if strings.Contains(value, "(known after apply)") {
+		return colorizeValueComputed(value)
+	}
+	if strings.Contains(value, "(sensitive") {
+		return colorizeValueSensitive(value)
+	}
+	if strings.Contains(value, " -> ") {
+		return colorizeValueChangeArrow(value)
+	}
+	if value == "null" {
+		return lipgloss.NewStyle().Foreground(destroyColor).Render(value)
+	}
+	if value == "true" || value == "false" {
+		return lipgloss.NewStyle().Foreground(readColor).Render(value)
+	}
+	if regexp.MustCompile(`^-?[0-9]+\.?[0-9]*$`).MatchString(value) {
+		return lipgloss.NewStyle().Foreground(updateColor).Render(value)
+	}
+	if len(value) > 1 && value[0] == '"' {
+		return lipgloss.NewStyle().Foreground(createColor).Render(value)
+	}
+	if value == "{" || value == "[" || strings.HasSuffix(value, "{") || strings.HasSuffix(value, "[") {
+		return lipgloss.NewStyle().Foreground(mutedColorVal).Render(value)
+	}
+	return colorizeValueByAction(value, action)
 }
 
 func colorizeBlockDeclaration(content string) string {

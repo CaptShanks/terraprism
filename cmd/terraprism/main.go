@@ -12,11 +12,12 @@ import (
 	"github.com/CaptShanks/terraprism/internal/history"
 	"github.com/CaptShanks/terraprism/internal/parser"
 	"github.com/CaptShanks/terraprism/internal/tui"
+	"github.com/CaptShanks/terraprism/internal/updater"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.10.0"
+const version = "0.11.0"
 
 var (
 	printMode  = false
@@ -96,89 +97,102 @@ func main() {
 	case "version":
 		runVersionMode()
 		return
+	case "upgrade":
+		runUpgradeMode()
+		return
 	}
 	runViewMode(args)
 }
 
-// runApplyMode runs terraform/tofu plan, shows TUI, and optionally applies
-func runApplyMode(args []string, isDestroy bool) {
+func parseApplyArgs(args []string) []string {
 	var tfArgs []string
-
-	// Parse args (only -- and help at this point, global flags already parsed)
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--help", "-h":
 			printApplyUsage()
 			os.Exit(0)
 		case "--":
-			// Everything after -- is passed to terraform/tofu
 			tfArgs = append(tfArgs, args[i+1:]...)
-			i = len(args) // break loop
+			return tfArgs
 		default:
 			tfArgs = append(tfArgs, args[i])
 		}
 	}
+	return tfArgs
+}
 
-	// Detect terraform or tofu
+func ensureDestroyFlag(tfArgs []string) []string {
+	for _, arg := range tfArgs {
+		if arg == "-destroy" {
+			return tfArgs
+		}
+	}
+	return append([]string{"-destroy"}, tfArgs...)
+}
+
+func runApplyExecute(tfCmd, planFile, historyPath string) error {
+	if historyPath != "" {
+		_ = history.AppendToHistoryFile(historyPath, "\n\n--- APPLY OUTPUT ---\n\n")
+	}
+	applyCmd := exec.Command(tfCmd, "apply", planFile)
+	applyCmd.Stdout = os.Stdout
+	applyCmd.Stderr = os.Stderr
+	applyCmd.Stdin = os.Stdin
+	return applyCmd.Run()
+}
+
+func updateHistoryApplyResult(historyPath string, success bool, applyErr error) {
+	if historyPath == "" {
+		return
+	}
+	if success {
+		footer := history.CreateApplyResultFooter(true, nil)
+		_ = history.AppendToHistoryFile(historyPath, footer)
+		_, _ = history.UpdateFilenameWithStatus(historyPath, history.StatusSuccess)
+	} else {
+		footer := history.CreateApplyResultFooter(false, applyErr)
+		_ = history.AppendToHistoryFile(historyPath, footer)
+		_, _ = history.UpdateFilenameWithStatus(historyPath, history.StatusFailed)
+	}
+}
+
+// runApplyMode runs terraform/tofu plan, shows TUI, and optionally applies
+func runApplyMode(args []string, isDestroy bool) {
+	tfArgs := parseApplyArgs(args)
 	tfCmd := detectTFCommand()
-
-	// Determine command name for history
 	commandName := "apply"
 	if isDestroy {
 		commandName = "destroy"
-		// Add -destroy flag if not already present
-		hasDestroy := false
-		for _, arg := range tfArgs {
-			if arg == "-destroy" {
-				hasDestroy = true
-				break
-			}
-		}
-		if !hasDestroy {
-			tfArgs = append([]string{"-destroy"}, tfArgs...)
-		}
+		tfArgs = ensureDestroyFlag(tfArgs)
 	}
 
-	// Create temp file for plan
-	tmpDir := os.TempDir()
-	planFile := filepath.Join(tmpDir, fmt.Sprintf("terraprism-%d.tfplan", os.Getpid()))
+	planFile := filepath.Join(os.TempDir(), fmt.Sprintf("terraprism-%d.tfplan", os.Getpid()))
 	defer os.Remove(planFile)
 
 	fmt.Printf("Terra-Prism: Running %s plan... ", tfCmd)
-
-	// Run terraform/tofu plan
 	planArgs := append([]string{"plan", "-out=" + planFile, "-no-color"}, tfArgs...)
-	cmd := exec.Command(tfCmd, planArgs...)
-
-	// Capture both stdout and stderr
-	output, err := cmd.CombinedOutput()
+	output, err := exec.Command(tfCmd, planArgs...).CombinedOutput()
 	if err != nil {
 		fmt.Println("FAILED")
 		fmt.Fprintf(os.Stderr, "\n%s plan failed:\n%s\n", tfCmd, string(output))
 		os.Exit(1)
 	}
-
 	fmt.Println("OK")
 
-	// Save plan output to history
 	historyHeader := history.CreateHistoryHeader("plan", tfCmd, tfArgs)
 	historyPath, historyErr := history.CreateHistoryFile(commandName, historyHeader+string(output))
 	if historyErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to save history: %v\n", historyErr)
 	}
-
-	// Cleanup old history files
 	if deleted, _ := history.CleanupOldFiles(); deleted > 0 {
 		fmt.Fprintf(os.Stderr, "Cleaned up %d old history files\n", deleted)
 	}
 
-	// Parse the plan
 	plan, err := parser.Parse(string(output))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing plan: %v\n", err)
 		os.Exit(1)
 	}
-
 	if len(plan.Resources) == 0 {
 		fmt.Println("No changes. Infrastructure is up-to-date.")
 		if historyPath != "" {
@@ -187,54 +201,24 @@ func runApplyMode(args []string, isDestroy bool) {
 		os.Exit(0)
 	}
 
-	// Go straight to TUI
-	model := tui.NewModelWithApply(plan, planFile, tfCmd)
-
-	// Run TUI
-	p := tea.NewProgram(
-		model,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
-
+	model := tui.NewModelWithApply(plan, planFile, tfCmd, version)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	finalModel, err := p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Check if user wants to apply
 	if m, ok := finalModel.(tui.Model); ok && m.ShouldApply() {
 		fmt.Printf("\nApplying plan with %s...\n\n", tfCmd)
-
-		// Append apply start to history
-		if historyPath != "" {
-			_ = history.AppendToHistoryFile(historyPath, "\n\n--- APPLY OUTPUT ---\n\n")
-		}
-
-		applyCmd := exec.Command(tfCmd, "apply", planFile)
-		applyCmd.Stdout = os.Stdout
-		applyCmd.Stderr = os.Stderr
-		applyCmd.Stdin = os.Stdin
-
-		applyErr := applyCmd.Run()
-
+		applyErr := runApplyExecute(tfCmd, planFile, historyPath)
 		if applyErr != nil {
 			fmt.Fprintf(os.Stderr, "\nApply failed: %v\n", applyErr)
-			if historyPath != "" {
-				footer := history.CreateApplyResultFooter(false, applyErr)
-				_ = history.AppendToHistoryFile(historyPath, footer)
-				_, _ = history.UpdateFilenameWithStatus(historyPath, history.StatusFailed)
-			}
+			updateHistoryApplyResult(historyPath, false, applyErr)
 			os.Exit(1)
 		}
-
 		fmt.Println("\nApply complete!")
-		if historyPath != "" {
-			footer := history.CreateApplyResultFooter(true, nil)
-			_ = history.AppendToHistoryFile(historyPath, footer)
-			_, _ = history.UpdateFilenameWithStatus(historyPath, history.StatusSuccess)
-		}
+		updateHistoryApplyResult(historyPath, true, nil)
 	} else {
 		fmt.Println("\nApply cancelled.")
 		if historyPath != "" {
@@ -302,7 +286,7 @@ func runPlanMode(args []string) {
 
 	// Go straight to TUI
 	p := tea.NewProgram(
-		tui.NewModel(plan),
+		tui.NewModel(plan, version),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
@@ -509,7 +493,7 @@ func runHistoryView(args []string) {
 	}
 
 	p := tea.NewProgram(
-		tui.NewModel(plan),
+		tui.NewModel(plan, version),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
@@ -609,6 +593,34 @@ func runVersionMode() {
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "  %s not found or failed to run\n", tfCmd)
 	}
+
+	// Check for updates (skip if disabled)
+	if !updater.IsSkipUpdateCheck() {
+		if latest, hasUpdate, err := updater.CheckLatest(version); err == nil && hasUpdate {
+			fmt.Printf("\nUpdate available: v%s. Run 'terraprism upgrade' to update (or re-run the install script).\n", latest)
+		}
+	}
+}
+
+// runUpgradeMode upgrades terraprism to the latest version
+func runUpgradeMode() {
+	_, hasUpdate, err := updater.CheckLatest(version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error checking for updates: %v\n", err)
+		fmt.Println(updater.CurlFallbackMessage(err))
+		os.Exit(1)
+	}
+	if !hasUpdate {
+		fmt.Println("Already up to date.")
+		return
+	}
+
+	newVer, err := updater.Upgrade(version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", updater.CurlFallbackMessage(err))
+		os.Exit(1)
+	}
+	fmt.Printf("Upgraded to v%s. Restart terraprism to use the new version.\n", newVer)
 }
 
 // runViewMode is the default pipe/file view mode
@@ -678,7 +690,7 @@ func runViewMode(args []string) {
 	}
 
 	p := tea.NewProgram(
-		tui.NewModel(plan),
+		tui.NewModel(plan, version),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
@@ -712,17 +724,20 @@ COMMANDS:
     destroy     Run destroy plan, review in TUI, press 'a' to destroy
     history     View and manage plan/apply history
     version     Show terraprism and terraform/tofu versions
+    upgrade     Upgrade terraprism to the latest release
     init, validate, fmt, output, state, import, workspace, graph,
     console, login, logout, providers, force-unlock, show, refresh,
     taint, untaint   Pass through to terraform/tofu (e.g. state list)
 
 GLOBAL OPTIONS:
     -h, --help      Show this help
-    -v, --version   Show version
+    -v, --version   Show version (includes update check)
 
 ENVIRONMENT:
     TERRAPRISM_TOFU   Set to 1, true, or yes to use OpenTofu
     TERRAPRISM_THEME  Set to "light" or "dark" to force theme
+    TERRAPRISM_SKIP_UPDATE_CHECK  Set to 1, true, or yes to skip update checks
+    TERRAPRISM_UPDATE_CHECK_INTERVAL  Days between TUI update checks (default: 7)
 
 VIEW OPTIONS:
     -p, --print     Print mode (no TUI)
