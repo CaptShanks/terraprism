@@ -27,9 +27,7 @@ func CheckLatest(currentVersion string) (latestVersion string, hasUpdate bool, e
 	}
 	latestVersion = latest.Version.String()
 	// Strip 'v' prefix for comparison if present in tag
-	if strings.HasPrefix(latestVersion, "v") {
-		latestVersion = latestVersion[1:]
-	}
+	latestVersion = strings.TrimPrefix(latestVersion, "v")
 
 	current := normalizeVersion(currentVersion)
 	latestSemver, err := semver.Parse(latestVersion)
