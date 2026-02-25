@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -876,8 +875,8 @@ func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int
 		oldB64 := unquote(strings.TrimSpace(parts[0]))
 		newB64 := unquote(strings.TrimSpace(parts[1]))
 
-		oldDecoded, oldOk := tryBase64Decode(oldB64)
-		newDecoded, newOk := tryBase64Decode(newB64)
+		oldDecoded, oldOk := TryDecodeUserdata(oldB64)
+		newDecoded, newOk := TryDecodeUserdata(newB64)
 
 		if !oldOk && !newOk {
 			return "", false
@@ -924,7 +923,7 @@ func (m Model) tryRenderUserdata(line string, action parser.Action, maxWidth int
 	}
 
 	raw := unquote(value)
-	decoded, ok := tryBase64Decode(raw)
+	decoded, ok := TryDecodeUserdata(raw)
 	if !ok {
 		return "", false
 	}
@@ -1187,28 +1186,6 @@ func unquote(s string) string {
 		return s[1 : len(s)-1]
 	}
 	return s
-}
-
-func tryBase64Decode(s string) (string, bool) {
-	if s == "" || s == "null" || strings.HasPrefix(s, "(") {
-		return "", false
-	}
-	decoded, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		decoded, err = base64.URLEncoding.DecodeString(s)
-		if err != nil {
-			decoded, err = base64.RawStdEncoding.DecodeString(s)
-			if err != nil {
-				return "", false
-			}
-		}
-	}
-	for _, b := range decoded {
-		if b == 0 {
-			return "", false
-		}
-	}
-	return string(decoded), true
 }
 
 func wrapText(s string, width int) string {
