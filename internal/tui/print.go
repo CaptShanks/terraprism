@@ -28,7 +28,14 @@ func PrintPlan(plan *parser.Plan) {
 			lipgloss.NewStyle().Foreground(updateColor).Bold(true).Render(fmt.Sprintf("%d", plan.TotalChange)),
 			lipgloss.NewStyle().Foreground(destroyColor).Bold(true).Render(fmt.Sprintf("%d", plan.TotalDestroy)),
 		)
+		if plan.OutputCount > 0 {
+			summary += fmt.Sprintf(", %s output(s) changed",
+				lipgloss.NewStyle().Foreground(updateColor).Bold(true).Render(fmt.Sprintf("%d", plan.OutputCount)),
+			)
+		}
 		fmt.Println(summary)
+	} else if plan.OutputCount > 0 {
+		fmt.Printf("%d output(s) changed\n", plan.OutputCount)
 	} else {
 		fmt.Printf("%d resources with changes\n", len(plan.Resources))
 	}
@@ -238,6 +245,8 @@ func getActionDesc(action parser.Action) string {
 		return "will be destroyed then created"
 	case parser.ActionCreateDelete:
 		return "will be created then destroyed"
+	case parser.ActionOutput:
+		return "output values will change"
 	default:
 		return ""
 	}

@@ -83,7 +83,8 @@ var actionOrder = map[parser.Action]int{
 	parser.ActionDeleteCreate: 4,
 	parser.ActionCreateDelete: 5,
 	parser.ActionDestroy:      6,
-	parser.ActionNoOp:         7,
+	parser.ActionOutput:       7,
+	parser.ActionNoOp:         8,
 }
 
 // filterableActions is the ordered list of statuses available for filtering
@@ -95,6 +96,7 @@ var filterableActions = []parser.Action{
 	parser.ActionRead,
 	parser.ActionDeleteCreate,
 	parser.ActionCreateDelete,
+	parser.ActionOutput,
 }
 
 // filteredResources returns indices into plan.Resources that pass the status filter.
@@ -1630,6 +1632,8 @@ func getActionDescription(action parser.Action) string {
 		return "will be destroyed and then created"
 	case parser.ActionCreateDelete:
 		return "will be created and then destroyed"
+	case parser.ActionOutput:
+		return "output values will change"
 	default:
 		return ""
 	}
@@ -1684,6 +1688,8 @@ func filterActionLabel(action parser.Action) string {
 		return "destroy+create"
 	case parser.ActionCreateDelete:
 		return "create+destroy"
+	case parser.ActionOutput:
+		return "output"
 	default:
 		return string(action)
 	}
@@ -1747,7 +1753,14 @@ func (m Model) viewHeader() string {
 			lipgloss.NewStyle().Foreground(updateColor).Render(fmt.Sprintf("%d", m.plan.TotalChange)),
 			lipgloss.NewStyle().Foreground(destroyColor).Render(fmt.Sprintf("%d", m.plan.TotalDestroy)),
 		)
+		if m.plan.OutputCount > 0 {
+			summary += fmt.Sprintf(", %s output(s) changed",
+				lipgloss.NewStyle().Foreground(updateColor).Render(fmt.Sprintf("%d", m.plan.OutputCount)),
+			)
+		}
 		b.WriteString(summaryStyle.Render(summary))
+	} else if m.plan.OutputCount > 0 {
+		b.WriteString(summaryStyle.Render(fmt.Sprintf("  %d output(s) changed", m.plan.OutputCount)))
 	} else {
 		b.WriteString(summaryStyle.Render(fmt.Sprintf("  %d resources with changes", len(m.plan.Resources))))
 	}

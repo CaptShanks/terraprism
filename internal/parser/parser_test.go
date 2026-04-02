@@ -133,6 +133,116 @@ Plan: 1 to add, 0 to change, 1 to destroy.
 	}
 }
 
+func TestParseOutputChanges(t *testing.T) {
+	input := `
+Terraform will perform the following actions:
+
+  # aws_instance.example will be created
+  + resource "aws_instance" "example" {
+      + ami           = "ami-12345678"
+      + instance_type = "t2.micro"
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + instance_id        = (known after apply)
+  + instance_public_ip = (known after apply)
+  ~ sg_id              = "sg-old" -> (known after apply)
+`
+
+	plan, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Failed to parse plan: %v", err)
+	}
+
+	if len(plan.Resources) != 2 {
+		t.Fatalf("Expected 2 resources (1 real + 1 output), got %d", len(plan.Resources))
+	}
+
+	if plan.Resources[0].Action != ActionCreate {
+		t.Errorf("Expected first resource action to be create, got %s", plan.Resources[0].Action)
+	}
+
+	outputRes := plan.Resources[1]
+	if outputRes.Action != ActionOutput {
+		t.Errorf("Expected second resource action to be output, got %s", outputRes.Action)
+	}
+	if outputRes.Address != "Changes to Outputs" {
+		t.Errorf("Expected address 'Changes to Outputs', got '%s'", outputRes.Address)
+	}
+	if plan.OutputCount != 3 {
+		t.Errorf("Expected OutputCount 3, got %d", plan.OutputCount)
+	}
+	// RawLines[0] is the header, [1:] are the output lines
+	if len(outputRes.RawLines) != 4 {
+		t.Errorf("Expected 4 RawLines (1 header + 3 outputs), got %d", len(outputRes.RawLines))
+	}
+}
+
+func TestParseOutputOnlyPlan(t *testing.T) {
+	input := `
+No changes. Your infrastructure matches the configuration.
+
+Changes to Outputs:
+  + new_output     = "hello-world"
+  ~ changed_output = "old-value" -> "new-value"
+  - removed_output = "gone" -> null
+
+You can apply this plan to save these new output values to the Terraform
+state, without changing any real infrastructure.
+`
+
+	plan, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Failed to parse plan: %v", err)
+	}
+
+	if len(plan.Resources) != 1 {
+		t.Fatalf("Expected 1 resource (synthetic output), got %d", len(plan.Resources))
+	}
+
+	outputRes := plan.Resources[0]
+	if outputRes.Action != ActionOutput {
+		t.Errorf("Expected action to be output, got %s", outputRes.Action)
+	}
+	if outputRes.Type != "output" {
+		t.Errorf("Expected type 'output', got '%s'", outputRes.Type)
+	}
+	if plan.OutputCount != 3 {
+		t.Errorf("Expected OutputCount 3, got %d", plan.OutputCount)
+	}
+}
+
+func TestParseNoOutputChanges(t *testing.T) {
+	input := `
+Terraform will perform the following actions:
+
+  # aws_instance.example will be created
+  + resource "aws_instance" "example" {
+      + ami           = "ami-12345678"
+      + instance_type = "t2.micro"
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+`
+
+	plan, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Failed to parse plan: %v", err)
+	}
+
+	if len(plan.Resources) != 1 {
+		t.Errorf("Expected 1 resource, got %d", len(plan.Resources))
+	}
+	if plan.Resources[0].Action != ActionCreate {
+		t.Errorf("Expected action to be create, got %s", plan.Resources[0].Action)
+	}
+	if plan.OutputCount != 0 {
+		t.Errorf("Expected OutputCount 0, got %d", plan.OutputCount)
+	}
+}
+
 func TestParseEmptyPlan(t *testing.T) {
 	input := `
 No changes. Infrastructure is up-to-date.

@@ -38,6 +38,7 @@
 - **History tracking** - All plans saved with full path, searchable picker
 - **Color-coded CLI** - Commands and status colored in history list
 - **Environment variables** - Set `TERRAPRISM_TOFU` and `TERRAPRISM_THEME` to avoid passing flags every time
+- **State viewer** - Interactive TUI for `state list`, `state show`, and `state rm` with search, sort, multi-select, taint, and untaint
 - **Passthrough commands** - Run init, validate, fmt, and other terraform/tofu commands through terraprism
 
 ## Installation
@@ -91,6 +92,18 @@ Run plan and view interactively (no apply):
 terraprism plan
 TERRAPRISM_TOFU=1 terraprism plan
 ```
+
+### State Mode
+
+Interactive TUI for Terraform state with search, sort, show details, remove, taint, and untaint:
+
+```bash
+terraprism state list
+terraprism state show
+terraprism state rm
+```
+
+All three subcommands open the same unified TUI. Use **Space** to select items, **Ctrl+Space** to select a range, then **Enter** (show), **t** (taint), **u** (untaint), or **d**/**x** (remove). **Esc** clears selection or dismisses confirmation. Other state subcommands (`state mv`, `state pull`, etc.) pass through to terraform/tofu.
 
 ### Pipe Mode
 
@@ -164,6 +177,23 @@ Sort options: default (plan order), by action, by address, by type.
 | `a` | Apply the plan |
 | `y` | Confirm apply |
 
+### State Mode (state list/show/rm)
+| Key | Action |
+|-----|--------|
+| `j`/`k`, `↑`/`↓` | Navigate (highlight item) |
+| `Space` | Toggle selection of highlighted item |
+| `Ctrl+Space` | Select range from anchor to current |
+| `Enter` | Show details (opens immediately, no confirmation) |
+| `t` | Taint selected (confirmation required) |
+| `u` | Untaint selected (confirmation required) |
+| `d` or `x` | Remove from state (confirmation required) |
+| `/` | Search |
+| `f` or `s` | Sort (by address, type, module depth) |
+| `Esc` | Clear selection or dismiss confirmation |
+| `q` | Quit |
+
+In the detail view: `/` search within content, `e`/`c` expand/collapse all blocks, `j`/`k` scroll, `y` copy full content, `Y` copy line at top (OSC 52).
+
 ### Other
 | Key | Action |
 |-----|--------|
@@ -196,8 +226,10 @@ terraprism                     # View piped/file input
 terraprism plan                # Run terraform plan and view
 terraprism apply               # Run plan, view, and apply
 terraprism destroy             # Run destroy plan and apply
+terraprism state list|show|rm  # Interactive state TUI (search, sort, taint, untaint)
 terraprism history             # Manage history files
 terraprism version             # Show terraprism and terraform/tofu version
+terraprism upgrade             # Upgrade to the latest release
 terraprism init|validate|fmt|output|state|import|...  # Pass through to terraform/tofu
 ```
 
@@ -205,7 +237,7 @@ terraprism init|validate|fmt|output|state|import|...  # Pass through to terrafor
 
 ```
 -h, --help      Show help message
--v, --version   Show version (includes terraform/tofu version)
+-v, --version   Show version (includes update check and terraform/tofu version)
 -p, --print     Print colored output without interactive TUI
 ```
 
@@ -216,13 +248,31 @@ Set these to avoid passing flags every time:
 ```
 TERRAPRISM_TOFU    Set to 1, true, or yes to use OpenTofu instead of Terraform
 TERRAPRISM_THEME   Set to "light" or "dark" to force color scheme
+TERRAPRISM_SKIP_UPDATE_CHECK   Set to 1, true, or yes to skip update checks
+TERRAPRISM_UPDATE_CHECK_INTERVAL  Days between TUI update checks (default: 7)
 ```
 
 Example: add `export TERRAPRISM_TOFU=1` to your `~/.bashrc` or `~/.zshrc` to always use OpenTofu.
 
+## Upgrading
+
+Upgrade to the latest release:
+
+```bash
+terraprism upgrade
+```
+
+If self-update fails (e.g. binary in read-only location), re-run the install script:
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/CaptShanks/terraprism/main/install.sh | sh
+```
+
+When a newer version is available, terraprism shows an update nudge in the TUI footer and when running `terraprism version`.
+
 ## Passthrough Commands
 
-Any terraform/tofu command not enhanced by terraprism (init, validate, fmt, output, state, import, workspace, graph, console, login, logout, providers, force-unlock, show, refresh, taint, untaint) is passed through to the selected engine. Use terraprism as a drop-in replacement:
+Any terraform/tofu command not enhanced by terraprism (init, validate, fmt, output, state mv/pull/push, import, workspace, graph, console, login, logout, providers, force-unlock, show, refresh, taint, untaint) is passed through to the selected engine. Use terraprism as a drop-in replacement:
 
 ```bash
 terraprism init
@@ -230,7 +280,8 @@ terraprism init -upgrade
 terraprism validate
 terraprism fmt -recursive
 terraprism output
-terraprism state list   # "state" is the command, "list" is its subcommand
+terraprism state mv src dst   # state mv, pull, push, etc. pass through
+terraprism state list        # state list, show, rm use interactive TUI
 ```
 
 ## History

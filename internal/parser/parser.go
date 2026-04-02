@@ -18,6 +18,7 @@ const (
 	ActionNoOp         Action = "no-op"
 	ActionCreateDelete Action = "create-delete"
 	ActionDeleteCreate Action = "delete-create"
+	ActionOutput       Action = "output"
 )
 
 // Attribute represents a single attribute change
@@ -47,6 +48,7 @@ type Plan struct {
 	TotalAdd     int
 	TotalChange  int
 	TotalDestroy int
+	OutputCount  int
 	RawPlan      string
 }
 
@@ -64,6 +66,8 @@ func Parse(input string) (*Plan, error) {
 	} else {
 		parseOldFormat(plan, lines)
 	}
+
+	parseOutputs(plan, lines)
 
 	// Parse summary
 	parseSummary(plan, lines)
@@ -295,6 +299,48 @@ func parseActionFromLine(line string) Action {
 	}
 
 	return ActionUpdate
+}
+
+func parseOutputs(plan *Plan, lines []string) {
+	startIdx := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "Changes to Outputs:" {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		return
+	}
+
+	var outputLines []string
+	for i := startIdx + 1; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			break
+		}
+		if strings.HasPrefix(trimmed, "+") ||
+			strings.HasPrefix(trimmed, "-") ||
+			strings.HasPrefix(trimmed, "~") {
+			outputLines = append(outputLines, lines[i])
+		}
+	}
+	if len(outputLines) == 0 {
+		return
+	}
+
+	rawLines := make([]string, 0, len(outputLines)+1)
+	rawLines = append(rawLines, lines[startIdx])
+	rawLines = append(rawLines, outputLines...)
+
+	plan.OutputCount = len(outputLines)
+	plan.Resources = append(plan.Resources, Resource{
+		Address:  "Changes to Outputs",
+		Type:     "output",
+		Name:     "outputs",
+		Action:   ActionOutput,
+		RawLines: rawLines,
+	})
 }
 
 func parseSummary(plan *Plan, lines []string) {

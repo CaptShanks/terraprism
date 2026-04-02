@@ -235,6 +235,8 @@ func GetActionSymbol(action string) string {
 		return replaceSymbol
 	case "read":
 		return readSymbol
+	case "output":
+		return updateSymbol
 	default:
 		return updateSymbol
 	}
@@ -253,6 +255,8 @@ func GetResourceStyle(action string) lipgloss.Style {
 		return resourceReplaceStyle
 	case "read":
 		return resourceReadStyle
+	case "output":
+		return resourceUpdateStyle
 	default:
 		return resourceUpdateStyle
 	}
@@ -271,6 +275,8 @@ func GetActionColor(action string) lipgloss.Color {
 		return replaceColor
 	case "read":
 		return readColor
+	case "output":
+		return updateColor
 	default:
 		return updateColor
 	}

@@ -77,6 +77,14 @@ func main() {
 		runVersionMode()
 		return
 	}
+	// Intercept state list/show/rm before passthrough; state mv etc. fall through
+	if args[0] == "state" && len(args) >= 2 {
+		switch args[1] {
+		case "list", "show", "rm":
+			runStateMode(args)
+			return
+		}
+	}
 	if tfPassthroughCommands[args[0]] {
 		runPassthroughMode(args)
 		return
@@ -580,6 +588,53 @@ func runPassthroughMode(args []string) {
 	}
 }
 
+// runStateMode runs terraform state list, parses addresses, and shows the state TUI
+func runStateMode(args []string) {
+	tfCmd := detectTFCommand()
+
+	// Extract terraform options from args[2:] (after "state" and subcommand)
+	tfStateArgs := []string{}
+	if len(args) > 2 {
+		tfStateArgs = args[2:]
+	}
+
+	// Run terraform state list
+	listArgs := append([]string{"state", "list"}, tfStateArgs...)
+	output, err := exec.Command(tfCmd, listArgs...).CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s state list failed:\n%s\n", tfCmd, string(output))
+		os.Exit(1)
+	}
+
+	// Parse addresses: one per line, trim, filter empty
+	lines := strings.Split(string(output), "\n")
+	var addresses []string
+	for _, line := range lines {
+		addr := strings.TrimSpace(line)
+		if addr != "" {
+			addresses = append(addresses, addr)
+		}
+	}
+
+	if len(addresses) == 0 {
+		fmt.Println("No resources in state.")
+		os.Exit(0)
+	}
+
+	fmt.Printf("Terra-Prism: %d resources in state\n", len(addresses))
+
+	p := tea.NewProgram(
+		tui.NewStateModel(addresses, tfCmd, tfStateArgs, version),
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
+
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running state TUI: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 // runVersionMode displays terraprism version and terraform/tofu version
 func runVersionMode() {
 	fmt.Printf("terraprism v%s\n\n", version)
@@ -722,12 +777,13 @@ COMMANDS:
     plan        Run terraform/tofu plan and view interactively
     apply       Run plan, review in TUI, press 'a' to apply
     destroy     Run destroy plan, review in TUI, press 'a' to destroy
+    state list|show|rm   Interactive state TUI (search, sort, taint, untaint)
     history     View and manage plan/apply history
     version     Show terraprism and terraform/tofu versions
     upgrade     Upgrade terraprism to the latest release
-    init, validate, fmt, output, state, import, workspace, graph,
+    init, validate, fmt, output, state mv, import, workspace, graph,
     console, login, logout, providers, force-unlock, show, refresh,
-    taint, untaint   Pass through to terraform/tofu (e.g. state list)
+    taint, untaint   Pass through to terraform/tofu
 
 GLOBAL OPTIONS:
     -h, --help      Show this help
