@@ -86,38 +86,6 @@ Sleep 500ms
 Type "q"
 Sleep 1s
 
-# Show history
-Type "# Now let's check history"
-Enter
-Sleep 1s
-
-Type "terraprism history list"
-Enter
-Sleep 3s
-
-# Interactive picker
-Type "terraprism history view"
-Enter
-Sleep 2s
-
-# Navigate
-Type "j"
-Sleep 500ms
-Type "j"
-Sleep 500ms
-
-# Search in picker
-Type "/"
-Sleep 500ms
-Type@50ms "apply success"
-Sleep 1s
-Enter
-Sleep 1s
-
-# Cancel
-Type "q"
-Sleep 1s
-
 Type "# That's Terra-Prism!"
 Enter
 Sleep 2s
