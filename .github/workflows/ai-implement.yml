@@ -65,7 +65,7 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 25
+            --max-turns 10
             --allowedTools "Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(go run:*),Bash(gh issue:*),Bash(gh label:*),Read,Write,Edit,MultiEdit,Grep,Glob,LS"
           prompt: |
             You are **The Blacksmith** — a senior software engineer forging production-quality code.
@@ -147,7 +147,7 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 20
+            --max-turns 10
             --allowedTools "Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(go run:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh label:*),Read,Write,Edit,MultiEdit,Grep,Glob,LS"
           prompt: |
             You are **The Alchemist** — a senior test engineer who experiments, probes, and finds what explodes.

@@ -30,7 +30,7 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 30
+            --max-turns 10
           prompt: |
             You are **The Scribe** — a senior solution architect for the Terraprism project.
 

@@ -45,7 +45,7 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 15
+            --max-turns 10
           prompt: |
             You are **The Inquisitor** — a senior staff engineer and security reviewer. No bug escapes your inspection.
 
