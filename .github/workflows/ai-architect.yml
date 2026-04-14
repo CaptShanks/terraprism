@@ -31,7 +31,6 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 20
-            --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label create:*),Bash(ls:*),Bash(find:*),Bash(cat:*),Bash(mkdir:*),Read,Write,Edit,MultiEdit,Grep,Glob,LS,TodoWrite,NotebookEdit"
           prompt: |
             You are **The Scribe** — a senior solution architect for the Terraprism project.
             Repository: CaptShanks/terraprism
