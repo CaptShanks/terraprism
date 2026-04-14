@@ -1,0 +1,18 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ai-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    uses: CaptShanks/shipwright/.github/workflows/ai-pr-review.yml@main
+    with:
+      ai-provider: codex
+      project-context-path: .github/shipwright/project-context.md
+    secrets:
+      AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

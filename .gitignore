@@ -28,6 +28,10 @@ go.work
 *.swo
 *~
 
+# AI tool configs (may contain secrets)
+.cursor/mcp.json
+.serena/
+
 # OS files
 .DS_Store
 .DS_Store?

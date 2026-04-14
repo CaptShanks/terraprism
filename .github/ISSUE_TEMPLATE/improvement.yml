@@ -1,0 +1,55 @@
+name: Improvement
+description: Suggest an improvement to existing functionality
+title: "[Improvement]: "
+labels: ["type:improvement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggest an enhancement to existing Terraprism functionality.
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: Describe the current behavior that could be improved
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed Improvement
+      description: How should the behavior change?
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Rationale
+      description: Why is this improvement valuable?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Area
+      options:
+        - TUI / Display
+        - Parser / Plan Processing
+        - CLI / Configuration
+        - Performance
+        - Code Quality / Refactoring
+        - Testing
+        - CI/CD
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any additional information

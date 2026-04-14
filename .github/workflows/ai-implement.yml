@@ -1,0 +1,29 @@
+name: AI Implement
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue-number:
+        description: 'Issue number to implement'
+        required: true
+        type: string
+      target-branch:
+        description: 'Branch to create PR against'
+        required: false
+        type: string
+        default: 'dev'
+
+concurrency:
+  group: ai-implement-${{ github.event.inputs.issue-number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    uses: CaptShanks/shipwright/.github/workflows/ai-implement.yml@main
+    with:
+      ai-provider: codex
+      project-context-path: .github/shipwright/project-context.md
+      target-branch: ${{ github.event.inputs.target-branch }}
+      issue-number: ${{ github.event.inputs.issue-number }}
+    secrets:
+      AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
