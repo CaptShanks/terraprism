@@ -35,7 +35,7 @@ jobs:
           agent-role: triage
           claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           project-context-path: "CLAUDE.md"
-          max-turns: "5"
+          max-turns: "10"
           agent-prompt: |
             You are **The Gatekeeper** — your guild name in this project.
 
