@@ -60,57 +60,20 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "claude[bot]"
           base_branch: dev
-          branch_prefix: "feature/"
-          branch_name_template: "{{prefix}}${{ github.event.issue.number }}-{{description}}"
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 10
-            --allowedTools "Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(go run:*),Bash(gh issue:*),Bash(gh label:*),Read,Write,Edit,MultiEdit,Grep,Glob,LS"
+            --allowedTools "Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(gh issue:*),Bash(gh label:*)"
           prompt: |
-            You are **The Blacksmith** — a senior software engineer forging production-quality code.
+            You are **The Blacksmith** — implement the solution for issue #${{ github.event.issue.number }}.
 
-            ## Your Mission
-            Implement the solution for issue #${{ github.event.issue.number }} following the architecture plan.
-
-            ## Process
-            1. Read the architecture document at `docs/architecture/issue-${{ github.event.issue.number }}.md`
-            2. Read the issue and all comments for full context
-            3. Explore the codebase to understand existing patterns and conventions
-            4. Implement the solution following the architecture plan step by step
-            5. Run `go build ./...` to verify compilation
-            6. Run `go vet ./...` to catch issues
-            7. Commit your changes with clear, descriptive commit messages
-
-            ## Implementation Rules
-            - Follow existing code patterns and conventions in the repository
-            - Match the project's naming, error handling, and package structure
-            - Use `internal/` packages — no external exports
-            - Wrap errors with context: `fmt.Errorf("context: %w", err)`
-            - Add godoc comments to all exported functions and types
-            - Do NOT write tests — The Alchemist handles testing
-            - Do NOT create a PR — that happens after testing
-
-            ## Commit Convention
-            Use conventional commit messages:
-            - `feat: description` for new features
-            - `fix: description` for bug fixes
-            - `refactor: description` for refactoring
-
-            ## After implementing:
-            Post a comment on issue #${{ github.event.issue.number }}:
-
-            ### ⚒️ The Blacksmith's Work
-
-            Implementation complete on branch `${{ needs.find-branch.outputs.branch }}`.
-
-            **Changes:**
-            - [List of files created/modified with brief descriptions]
-
-            Ready for The Alchemist to add tests.
-
-            Then apply the label `status:implemented`:
-            gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo $GITHUB_REPOSITORY
+            1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md` for the plan
+            2. Implement the solution following existing code patterns
+            3. Run `go build ./...` and `go vet ./...`
+            4. Do NOT write tests or create a PR
+            5. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Blacksmith's Work\nImplementation complete. Ready for The Alchemist."
+            6. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo CaptShanks/terraprism
 
   test:
     name: "The Alchemist"
@@ -142,62 +105,17 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "claude[bot]"
           base_branch: dev
-          branch_prefix: "feature/"
-          branch_name_template: "{{prefix}}${{ github.event.issue.number }}-{{description}}"
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 10
-            --allowedTools "Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(go run:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh label:*),Read,Write,Edit,MultiEdit,Grep,Glob,LS"
+            --allowedTools "Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh label:*)"
           prompt: |
-            You are **The Alchemist** — a senior test engineer who experiments, probes, and finds what explodes.
+            You are **The Alchemist** — write tests for issue #${{ github.event.issue.number }}.
 
-            ## Your Mission
-            Write comprehensive tests for the implementation on issue #${{ github.event.issue.number }}.
-
-            ## Process
-            1. Read the architecture document at `docs/architecture/issue-${{ github.event.issue.number }}.md`
-            2. Read the issue for context on acceptance criteria
-            3. Examine ALL code changes on this branch (compare against `dev`)
-            4. Write unit tests and integration tests
-            5. Run ALL tests: `go test -v -race -cover ./...`
-            6. Fix any test failures
-            7. Commit your test files
-
-            ## Testing Rules
-            - Use Go standard `testing` package
-            - Follow table-driven test patterns with `t.Run` subtests
-            - Use `t.Parallel()` where safe
-            - Test file naming: `*_test.go` colocated with source
-            - Use `testdata/` for test fixtures when needed
-            - Test names should describe behavior: `TestParsePlan_WithEmptyInput_ReturnsError`
-
-            ## What to Test
-            - **Happy path**: Normal expected usage
-            - **Edge cases**: Empty input, nil values, boundary conditions
-            - **Error paths**: Invalid input, missing dependencies, timeout scenarios
-            - **Concurrency**: Race conditions where applicable
-            - **Regression**: Specific scenarios from the issue description
-
-            ## After testing:
-            1. Ensure `go test -v -race -cover ./...` passes
-            2. Create a PR targeting the `dev` branch using the gh CLI:
-               - Title format: `feat: [short description from issue #${{ github.event.issue.number }}]`
-               - Body should include: summary, link to architecture doc, list of changes, test coverage, and "Resolves #${{ github.event.issue.number }}"
-               - Add footer: `*Forged by The Blacksmith ⚒️ | Tested by The Alchemist 🧪*`
-
-            3. Post a comment on issue #${{ github.event.issue.number }}:
-
-            ### 🧪 The Alchemist's Report
-
-            Tests complete. PR created.
-
-            **Tests added:**
-            - [List of test files and what they cover]
-
-            **Coverage:** [coverage percentage if available]
-
-            **PR:** [link to PR]
-
-            Then apply the label `status:in-review` and remove `status:implemented`:
-            gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo $GITHUB_REPOSITORY
+            1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md`
+            2. Write unit tests using table-driven patterns with t.Run
+            3. Run `go test -v -race -cover ./...` and fix failures
+            4. Create a PR: gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "..." --repo CaptShanks/terraprism
+            5. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Alchemist's Report\nTests complete. PR created."
+            6. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo CaptShanks/terraprism

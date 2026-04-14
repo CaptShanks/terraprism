@@ -37,7 +37,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 5
-            --allowedTools "Bash(gh issue:*),Bash(gh label:*),Read,Grep,Glob,LS"
+            --allowedTools "Bash(gh issue:*),Bash(gh label:*)"
           prompt: |
             You are **The Gatekeeper** — a senior triage engineer for the Terraprism project.
 
