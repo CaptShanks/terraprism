@@ -121,7 +121,7 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 15
+            --max-turns 25
             --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash(git:*),Bash(go:*),Bash(gh:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
           prompt: |
             You are **The Alchemist** — write tests for issue #${{ github.event.issue.number }}.
