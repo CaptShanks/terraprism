@@ -23,33 +23,33 @@ const (
 
 // Attribute represents a single attribute change
 type Attribute struct {
-	Name      string
-	OldValue  string
-	NewValue  string
-	Action    Action
-	Computed  bool
-	Sensitive bool
+	Name      string `json:"name"`
+	OldValue  string `json:"old_value"`
+	NewValue  string `json:"new_value"`
+	Action    Action `json:"action"`
+	Computed  bool   `json:"computed"`
+	Sensitive bool   `json:"sensitive"`
 }
 
 // Resource represents a single resource in the plan
 type Resource struct {
-	Address    string
-	Type       string
-	Name       string
-	Action     Action
-	Attributes []Attribute
-	RawLines   []string
+	Address    string      `json:"address"`
+	Type       string      `json:"type"`
+	Name       string      `json:"name"`
+	Action     Action      `json:"action"`
+	Attributes []Attribute `json:"attributes"`
+	RawLines   []string    `json:"raw_lines"`
 }
 
 // Plan represents a parsed Terraform plan
 type Plan struct {
-	Resources    []Resource
-	Summary      string
-	TotalAdd     int
-	TotalChange  int
-	TotalDestroy int
-	OutputCount  int
-	RawPlan      string
+	Resources    []Resource `json:"resources"`
+	Summary      string     `json:"summary"`
+	TotalAdd     int        `json:"total_add"`
+	TotalChange  int        `json:"total_change"`
+	TotalDestroy int        `json:"total_destroy"`
+	OutputCount  int        `json:"output_count"`
+	RawPlan      string     `json:"raw_plan"`
 }
 
 // Parse parses a Terraform plan output string

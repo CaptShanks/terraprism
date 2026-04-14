@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -238,12 +239,15 @@ func runApplyMode(args []string, isDestroy bool) {
 // runPlanMode runs terraform/tofu plan and shows in TUI (read-only)
 func runPlanMode(args []string) {
 	var tfArgs []string
+	var jsonMode bool
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--help", "-h":
 			printUsage()
 			os.Exit(0)
+		case "--json":
+			jsonMode = true
 		case "--":
 			tfArgs = append(tfArgs, args[i+1:]...)
 			i = len(args)
@@ -285,6 +289,17 @@ func runPlanMode(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing plan: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Handle JSON mode
+	if jsonMode {
+		jsonData, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error marshaling plan to JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(jsonData))
+		os.Exit(0)
 	}
 
 	if len(plan.Resources) == 0 {
@@ -762,7 +777,7 @@ func printUsage() {
 USAGE:
     terraform plan -no-color | terraprism        # Pipe plan output
     terraprism <plan-file>                       # Read from file
-    terraprism plan [-- tf-args]                 # Run plan and view
+    terraprism plan [--json] [-- tf-args]        # Run plan and view
     terraprism apply [-- tf-args]                # Run plan, view, and apply
     terraprism destroy [-- tf-args]              # Run destroy plan and apply
     terraprism init|validate|fmt|...             # Pass through to terraform/tofu
@@ -775,6 +790,7 @@ DESCRIPTION:
 COMMANDS:
     (none)      View mode - pipe or file input
     plan        Run terraform/tofu plan and view interactively
+    plan --json Run terraform/tofu plan and output JSON to stdout
     apply       Run plan, review in TUI, press 'a' to apply
     destroy     Run destroy plan, review in TUI, press 'a' to destroy
     state list|show|rm   Interactive state TUI (search, sort, taint, untaint)
@@ -821,6 +837,9 @@ EXAMPLES:
     # Run plan and view
     terraprism plan
 
+    # Run plan and output JSON
+    terraprism plan --json
+
     # Run plan, review, and apply
     terraprism apply
 
@@ -832,6 +851,9 @@ EXAMPLES:
 
     # Pass extra args to terraform/tofu
     terraprism apply -- -target=module.vpc -var="env=prod"
+
+    # JSON output with extra args
+    terraprism plan --json -- -target=module.vpc
 
     # View history
     terraprism history
