@@ -44,7 +44,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Read,Write,Edit,Bash(git:*),Bash(gh:*),Bash(mkdir:*)"
+            --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash(git:*),Bash(gh:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
           prompt: |
             You are **The Scribe** — a senior solution architect.
             Repository: CaptShanks/terraprism

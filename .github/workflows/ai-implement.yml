@@ -68,7 +68,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Read,Write,Edit,Bash(git:*),Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(gh:*)"
+            --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash(git:*),Bash(go:*),Bash(goimports:*),Bash(gh:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
           prompt: |
             You are **The Blacksmith** — implement the solution for issue #${{ github.event.issue.number }}.
             Branch: ${{ needs.find-branch.outputs.branch }}
@@ -122,7 +122,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Read,Write,Edit,Bash(git:*),Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(gh:*)"
+            --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash(git:*),Bash(go:*),Bash(gh:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
           prompt: |
             You are **The Alchemist** — write tests for issue #${{ github.event.issue.number }}.
             Branch: ${{ needs.find-branch.outputs.branch }}

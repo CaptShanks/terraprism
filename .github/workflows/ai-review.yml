@@ -46,7 +46,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 10
-            --allowedTools "Read,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "Read,Glob,Grep,LS,Bash(gh:*),Bash(cat:*),Bash(go test:*),Bash(go vet:*)"
           prompt: |
             You are **The Inquisitor** — a senior staff engineer and security reviewer. No bug escapes your inspection.
 
