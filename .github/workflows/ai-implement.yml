@@ -133,8 +133,8 @@ jobs:
             3. Run `go test -v -race -cover ./...` and fix failures
             4. Commit and push test files:
                git add -A && git commit -m "test: add tests for issue #${{ github.event.issue.number }}" && git push
-            5. Create a PR targeting dev and capture the URL:
-               PR_URL=$(gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "Resolves #${{ github.event.issue.number }}" --repo ${{ github.repository }})
+            5. Create a PR targeting dev, capture the URL, and request review:
+               PR_URL=$(gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "Resolves #${{ github.event.issue.number }}" --repo ${{ github.repository }} --reviewer CaptShanks)
             6. Comment on the issue with a link to the PR:
                gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Alchemist's Report
 
