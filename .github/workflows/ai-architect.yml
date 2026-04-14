@@ -19,32 +19,48 @@ jobs:
           fetch-depth: 0
           ref: dev
 
+      - name: Setup git identity
+        run: |
+          git config --global user.email "claude[bot]@users.noreply.github.com"
+          git config --global user.name "claude[bot]"
+
+      - name: Create feature branch
+        id: branch
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          TITLE=$(echo "${{ github.event.issue.title }}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | head -c 40 | sed 's/-$//')
+          BRANCH="feature/${ISSUE_NUMBER}-${TITLE}"
+          git checkout -b "$BRANCH"
+          git push -u origin "$BRANCH"
+          echo "branch_name=$BRANCH" >> "$GITHUB_OUTPUT"
+
       - name: Run The Scribe
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "claude[bot]"
-          base_branch: dev
-          branch_prefix: "feature/"
-          branch_name_template: "{{prefix}}{{entityNumber}}-{{description}}"
           use_sticky_comment: "true"
-          show_full_output: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Read,Write,Edit,Bash(gh:*),Bash(mkdir:*)"
+            --allowedTools "Read,Write,Edit,Bash(git:*),Bash(gh:*),Bash(mkdir:*)"
           prompt: |
             You are **The Scribe** — a senior solution architect.
             Repository: CaptShanks/terraprism
+            Branch: ${{ steps.branch.outputs.branch_name }}
 
             Design an implementation plan for issue #${{ github.event.issue.number }}.
 
             Steps (do them in order, be efficient):
             1. Read CLAUDE.md for project context
             2. Read 1-2 relevant source files to understand scope
-            3. Use the Write tool to create docs/architecture/issue-${{ github.event.issue.number }}.md with: Problem Statement, Affected Components, Solution Design, Implementation Steps, File Changes table, Testing Strategy
-            4. IMPORTANT: After writing the file, you MUST commit it using the mcp__github_file_ops__commit_files tool with files: ["docs/architecture/issue-${{ github.event.issue.number }}.md"] and a descriptive commit message. This pushes the file to the feature branch on GitHub.
-            5. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint\nArchitecture document ready.\n- **Architecture:** docs/architecture/issue-${{ github.event.issue.number }}.md"
-            6. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
+            3. Create docs/architecture/issue-${{ github.event.issue.number }}.md with: Problem Statement, Affected Components, Solution Design, Implementation Steps, File Changes table, Testing Strategy
+            4. Commit and push your changes:
+               git add -A && git commit -m "docs: add architecture for issue #${{ github.event.issue.number }}" && git push
+            5. Comment on the issue:
+               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint\nArchitecture document ready on branch \`${{ steps.branch.outputs.branch_name }}\`.\n- **Architecture:** docs/architecture/issue-${{ github.event.issue.number }}.md"
+            6. Apply label:
+               gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
 
-            Do NOT over-explore. Write the doc, commit it, and move on.
+            Do NOT over-explore. Write the doc, commit, and move on.

@@ -48,6 +48,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.find-branch.outputs.branch }}
 
+      - name: Setup git identity
+        run: |
+          git config --global user.email "claude[bot]@users.noreply.github.com"
+          git config --global user.name "claude[bot]"
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -59,22 +64,25 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "claude[bot]"
-          base_branch: dev
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Read,Write,Edit,Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(gh:*)"
+            --allowedTools "Read,Write,Edit,Bash(git:*),Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(gh:*)"
           prompt: |
             You are **The Blacksmith** — implement the solution for issue #${{ github.event.issue.number }}.
+            Branch: ${{ needs.find-branch.outputs.branch }}
 
             1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md` for the plan
             2. Implement the solution following existing code patterns
-            3. Run `go build ./...` and `go vet ./...` to verify
-            4. IMPORTANT: Commit all changed files using mcp__github_file_ops__commit_files with a descriptive message
+            3. Run `go build ./...` and `go vet ./...`
+            4. Commit and push:
+               git add -A && git commit -m "feat: implement issue #${{ github.event.issue.number }}" && git push
             5. Do NOT write tests or create a PR
-            6. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Blacksmith's Work\nImplementation complete. Ready for The Alchemist."
-            7. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo CaptShanks/terraprism
+            6. Comment on the issue:
+               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Blacksmith's Work\nImplementation complete on branch \`${{ needs.find-branch.outputs.branch }}\`. Ready for The Alchemist."
+            7. Apply label:
+               gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo CaptShanks/terraprism
 
   test:
     name: "The Alchemist"
@@ -95,6 +103,11 @@ jobs:
       - name: Pull latest changes from Blacksmith
         run: git pull origin ${{ needs.find-branch.outputs.branch }} --rebase
 
+      - name: Setup git identity
+        run: |
+          git config --global user.email "claude[bot]@users.noreply.github.com"
+          git config --global user.name "claude[bot]"
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -105,19 +118,23 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "claude[bot]"
-          base_branch: dev
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Read,Write,Edit,Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(gh:*)"
+            --allowedTools "Read,Write,Edit,Bash(git:*),Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(gh:*)"
           prompt: |
             You are **The Alchemist** — write tests for issue #${{ github.event.issue.number }}.
+            Branch: ${{ needs.find-branch.outputs.branch }}
 
             1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md`
             2. Write unit tests using table-driven patterns with t.Run
             3. Run `go test -v -race -cover ./...` and fix failures
-            4. IMPORTANT: Commit test files using mcp__github_file_ops__commit_files
-            5. Create a PR: gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "..." --repo CaptShanks/terraprism
-            6. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Alchemist's Report\nTests complete. PR created."
-            7. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo CaptShanks/terraprism
+            4. Commit and push test files:
+               git add -A && git commit -m "test: add tests for issue #${{ github.event.issue.number }}" && git push
+            5. Create a PR targeting dev:
+               gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "Resolves #${{ github.event.issue.number }}" --repo CaptShanks/terraprism
+            6. Comment on the issue:
+               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Alchemist's Report\nTests complete. PR created."
+            7. Apply label:
+               gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo CaptShanks/terraprism

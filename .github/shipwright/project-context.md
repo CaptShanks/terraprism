@@ -36,14 +36,16 @@ bin/                  Build output directory
 
 ## Dependencies
 
-| Package | Purpose |
-|---------|---------|
-| `charmbracelet/bubbletea` v1.3.10 | TUI framework (Elm architecture) |
-| `charmbracelet/bubbles` v0.21.0 | Pre-built TUI components (text input, viewport, etc.) |
-| `charmbracelet/lipgloss` v1.1.0 | Terminal styling and layout |
-| `muesli/reflow` v0.3.0 | Text wrapping and padding |
-| `blang/semver` v4.0.0 | Semantic versioning for self-update |
-| `rhysd/go-github-selfupdate` v1.2.3 | GitHub release-based self-update |
+
+| Package                             | Purpose                                               |
+| ----------------------------------- | ----------------------------------------------------- |
+| `charmbracelet/bubbletea` v1.3.10   | TUI framework (Elm architecture)                      |
+| `charmbracelet/bubbles` v0.21.0     | Pre-built TUI components (text input, viewport, etc.) |
+| `charmbracelet/lipgloss` v1.1.0     | Terminal styling and layout                           |
+| `muesli/reflow` v0.3.0              | Text wrapping and padding                             |
+| `blang/semver` v4.0.0               | Semantic versioning for self-update                   |
+| `rhysd/go-github-selfupdate` v1.2.3 | GitHub release-based self-update                      |
+
 
 ## Testing
 
@@ -98,3 +100,4 @@ GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=vX.Y.Z" -o terr
 - Include tests for new functionality
 - Run `golangci-lint` before submitting
 - Update CHANGELOG.md for user-facing changes
+
