@@ -783,10 +783,10 @@ func (m *StateModel) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detailViewport.SetContent(m.renderDetailContent())
 		return m, nil
 	case "j", "down":
-		m.detailViewport.LineDown(1)
+		m.detailViewport.ScrollDown(1)
 		return m, nil
 	case "k", "up":
-		m.detailViewport.LineUp(1)
+		m.detailViewport.ScrollUp(1)
 		return m, nil
 	case "pgdown", " ":
 		m.detailViewport.PageDown()
