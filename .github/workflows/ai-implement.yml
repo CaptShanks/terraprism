@@ -1,39 +1,190 @@
-name: AI Implement
+name: "The Blacksmith & The Alchemist"
 
 on:
   issues:
     types: [labeled]
-  workflow_dispatch:
-    inputs:
-      issue-number:
-        description: 'Issue number to implement'
-        required: true
-        type: string
-      target-branch:
-        description: 'Branch to create PR against'
-        required: false
-        type: string
-        default: 'dev'
-
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-
-concurrency:
-  group: ai-implement-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.issue-number || github.event.issue.number }}
-  cancel-in-progress: false
 
 jobs:
   implement:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'status:ready')
-    uses: CaptShanks/shipwright/.github/workflows/ai-implement.yml@main
-    with:
-      ai-provider: github-models
-      project-context-path: .github/shipwright/project-context.md
-      target-branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target-branch || 'dev' }}
-      issue-number: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.issue-number || format('{0}', github.event.issue.number) }}
-    secrets:
-      AI_API_KEY: ${{ secrets.GH_MODELS_TOKEN }}
+    name: "The Blacksmith"
+    if: github.event.action == 'labeled' && github.event.label.name == 'status:architected'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    outputs:
+      branch_name: ${{ steps.blacksmith.outputs.branch_name }}
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: shipwright/issue-${{ github.event.issue.number }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Run The Blacksmith
+        id: blacksmith
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          base_branch: dev
+          branch_prefix: "shipwright/"
+          branch_name_template: "{{prefix}}issue-${{ github.event.issue.number }}"
+          use_sticky_comment: "true"
+          claude_args: |
+            --model claude-sonnet-4-20250514
+            --max-turns 25
+            --allowedTools "Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(gh issue:*)"
+          prompt: |
+            You are **The Blacksmith** — a senior software engineer forging production-quality code.
+
+            ## Your Mission
+            Implement the solution for issue #${{ github.event.issue.number }} following the architecture plan.
+
+            ## Process
+            1. Read the architecture document at `docs/architecture/issue-${{ github.event.issue.number }}.md`
+            2. Read the issue and all comments for full context
+            3. Explore the codebase to understand existing patterns and conventions
+            4. Implement the solution following the architecture plan step by step
+            5. Run `go build ./...` to verify compilation
+            6. Run `go vet ./...` to catch issues
+            7. Commit your changes with clear, descriptive commit messages
+
+            ## Implementation Rules
+            - Follow existing code patterns and conventions in the repository
+            - Match the project's naming, error handling, and package structure
+            - Use `internal/` packages — no external exports
+            - Wrap errors with context: `fmt.Errorf("context: %w", err)`
+            - Add godoc comments to all exported functions and types
+            - Do NOT write tests — The Alchemist handles testing
+            - Do NOT create a PR — that happens after testing
+
+            ## Commit Convention
+            Use conventional commit messages:
+            - `feat: description` for new features
+            - `fix: description` for bug fixes
+            - `refactor: description` for refactoring
+
+            ## After implementing:
+            Post a comment on issue #${{ github.event.issue.number }}:
+
+            ### ⚒️ The Blacksmith's Work
+
+            Implementation complete on branch `shipwright/issue-${{ github.event.issue.number }}`.
+
+            **Changes:**
+            - [List of files created/modified with brief descriptions]
+
+            Ready for The Alchemist to add tests.
+
+            Then apply the label `status:implemented`:
+            gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo $GITHUB_REPOSITORY
+
+  test:
+    name: "The Alchemist"
+    needs: implement
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: shipwright/issue-${{ github.event.issue.number }}
+
+      - name: Pull latest changes from Blacksmith
+        run: git pull origin shipwright/issue-${{ github.event.issue.number }} --rebase
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Run The Alchemist
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          base_branch: dev
+          branch_prefix: "shipwright/"
+          branch_name_template: "{{prefix}}issue-${{ github.event.issue.number }}"
+          use_sticky_comment: "true"
+          claude_args: |
+            --model claude-sonnet-4-20250514
+            --max-turns 20
+            --allowedTools "Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(gh issue:*),Bash(gh pr:*)"
+          prompt: |
+            You are **The Alchemist** — a senior test engineer who experiments, probes, and finds what explodes.
+
+            ## Your Mission
+            Write comprehensive tests for the implementation on issue #${{ github.event.issue.number }}.
+
+            ## Process
+            1. Read the architecture document at `docs/architecture/issue-${{ github.event.issue.number }}.md`
+            2. Read the issue for context on acceptance criteria
+            3. Examine ALL code changes on this branch (compare against `dev`)
+            4. Write unit tests and integration tests
+            5. Run ALL tests: `go test -v -race -cover ./...`
+            6. Fix any test failures
+            7. Commit your test files
+
+            ## Testing Rules
+            - Use Go standard `testing` package
+            - Follow table-driven test patterns with `t.Run` subtests
+            - Use `t.Parallel()` where safe
+            - Test file naming: `*_test.go` colocated with source
+            - Use `testdata/` for test fixtures when needed
+            - Test names should describe behavior: `TestParseplan_WithEmptyInput_ReturnsError`
+
+            ## What to Test
+            - **Happy path**: Normal expected usage
+            - **Edge cases**: Empty input, nil values, boundary conditions
+            - **Error paths**: Invalid input, missing dependencies, timeout scenarios
+            - **Concurrency**: Race conditions where applicable
+            - **Regression**: Specific scenarios from the issue description
+
+            ## After testing:
+            1. Ensure `go test -v -race -cover ./...` passes
+            2. Create a PR targeting the `dev` branch:
+               gh pr create --base dev --head shipwright/issue-${{ github.event.issue.number }} \
+                 --title "feat: [issue title from #${{ github.event.issue.number }}]" \
+                 --body "## Summary
+               Resolves #${{ github.event.issue.number }}
+
+               ## Architecture
+               See \`docs/architecture/issue-${{ github.event.issue.number }}.md\`
+
+               ## Changes
+               [List key changes]
+
+               ## Test Coverage
+               [Summary of tests added and coverage]
+
+               ---
+               *Forged by The Blacksmith ⚒️ | Tested by The Alchemist 🧪*" \
+                 --repo $GITHUB_REPOSITORY
+
+            3. Post a comment on issue #${{ github.event.issue.number }}:
+
+            ### 🧪 The Alchemist's Report
+
+            Tests complete. PR created.
+
+            **Tests added:**
+            - [List of test files and what they cover]
+
+            **Coverage:** [coverage percentage if available]
+
+            **PR:** [link to PR]
+
+            Then apply the label `status:in-review`:
+            gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo $GITHUB_REPOSITORY

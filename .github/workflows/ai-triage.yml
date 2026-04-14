@@ -1,32 +1,88 @@
-name: AI Triage
+name: "The Gatekeeper"
 
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened]
   issue_comment:
     types: [created]
 
-permissions:
-  issues: write
-  contents: read
-
-concurrency:
-  group: ai-triage-${{ github.event.issue.number }}
-  cancel-in-progress: true
-
 jobs:
   triage:
-    if: >-
-      github.event_name == 'issues' ||
+    if: |
+      (github.event_name == 'issues') ||
       (
         github.event_name == 'issue_comment' &&
         !github.event.issue.pull_request &&
         github.event.comment.user.login != 'github-actions[bot]' &&
-        contains(toJSON(github.event.issue.labels.*.name), 'status:needs-info')
+        contains(github.event.comment.body, '@shipwright') &&
+        !contains(github.event.comment.body, '@claude')
       )
-    uses: CaptShanks/shipwright/.github/workflows/ai-triage.yml@main
-    with:
-      ai-provider: github-models
-      project-context-path: .github/shipwright/project-context.md
-    secrets:
-      AI_API_KEY: ${{ secrets.GH_MODELS_TOKEN }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run The Gatekeeper
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@shipwright"
+          use_sticky_comment: "true"
+          claude_args: |
+            --model claude-sonnet-4-20250514
+            --max-turns 5
+          prompt: |
+            You are **The Gatekeeper** — a senior triage engineer for the Terraprism project.
+
+            ## Your Mission
+            Rapidly assess this issue and determine if it is actionable or needs more information.
+
+            ## Rules
+            1. Do NOT implement fixes, design features, or commit code
+            2. Do NOT create branches or PRs
+            3. Analyze the issue title, body, and any comments for completeness
+            4. Determine if this is a bug, feature, or task
+
+            ## Decision Framework
+            - **ready**: Issue has clear scope, acceptance criteria (for features), or reproduction steps (for bugs)
+            - **needs-info**: Missing critical details — ask the MINIMUM set of targeted questions
+            - **reject**: Out of scope, duplicate, or clearly invalid
+            - **duplicate**: Link to the original issue
+
+            ## For features — ready when:
+            - Problem statement is clear
+            - Acceptance criteria are testable
+            - Scope is bounded
+
+            ## For bugs — ready when:
+            - Steps to reproduce exist
+            - Expected vs actual behavior is stated
+            - Environment details are provided (if relevant)
+
+            ## Your Output
+            Post a single comment with your assessment. Use this format:
+
+            ### 🏰 The Gatekeeper's Verdict
+
+            **Decision:** `ready` | `needs-info` | `reject` | `duplicate`
+            **Type:** `bug` | `feature` | `task`
+            **Confidence:** `high` | `medium` | `low`
+
+            **Summary:** [1-2 sentence assessment]
+
+            [If needs-info: list your specific questions as a numbered list]
+            [If ready: brief note on what the next step should be]
+            [If duplicate: link to the original issue]
+
+            ## After posting your comment, apply labels:
+            - For decision: add label `status:ready` OR `status:needs-info` OR `status:rejected` OR `status:duplicate`
+            - For type: add label `type:bug` OR `type:feature` OR `type:task`
+
+            IMPORTANT: You MUST apply the appropriate labels to the issue using the GitHub CLI.
+            Use: gh issue edit <number> --add-label "status:ready,type:feature" --repo $GITHUB_REPOSITORY
