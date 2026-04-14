@@ -70,10 +70,11 @@ jobs:
 
             1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md` for the plan
             2. Implement the solution following existing code patterns
-            3. Run `go build ./...` and `go vet ./...`
-            4. Do NOT write tests or create a PR
-            5. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Blacksmith's Work\nImplementation complete. Ready for The Alchemist."
-            6. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo CaptShanks/terraprism
+            3. Run `go build ./...` and `go vet ./...` to verify
+            4. IMPORTANT: Commit all changed files using mcp__github_file_ops__commit_files with a descriptive message
+            5. Do NOT write tests or create a PR
+            6. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Blacksmith's Work\nImplementation complete. Ready for The Alchemist."
+            7. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo CaptShanks/terraprism
 
   test:
     name: "The Alchemist"
@@ -116,6 +117,7 @@ jobs:
             1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md`
             2. Write unit tests using table-driven patterns with t.Run
             3. Run `go test -v -race -cover ./...` and fix failures
-            4. Create a PR: gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "..." --repo CaptShanks/terraprism
-            5. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Alchemist's Report\nTests complete. PR created."
-            6. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo CaptShanks/terraprism
+            4. IMPORTANT: Commit test files using mcp__github_file_ops__commit_files
+            5. Create a PR: gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "..." --repo CaptShanks/terraprism
+            6. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Alchemist's Report\nTests complete. PR created."
+            7. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo CaptShanks/terraprism

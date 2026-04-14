@@ -39,10 +39,11 @@ jobs:
             Design an implementation plan for issue #${{ github.event.issue.number }}.
 
             Steps (do them in order, be efficient):
-            1. Read CLAUDE.md
-            2. Read 1-2 relevant source files
-            3. Create docs/architecture/issue-${{ github.event.issue.number }}.md with: Problem Statement, Affected Components, Solution Design, Implementation Steps, File Changes table, Testing Strategy
-            4. gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint\nArchitecture document ready.\n- **Architecture:** docs/architecture/issue-${{ github.event.issue.number }}.md"
-            5. gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
+            1. Read CLAUDE.md for project context
+            2. Read 1-2 relevant source files to understand scope
+            3. Use the Write tool to create docs/architecture/issue-${{ github.event.issue.number }}.md with: Problem Statement, Affected Components, Solution Design, Implementation Steps, File Changes table, Testing Strategy
+            4. IMPORTANT: After writing the file, you MUST commit it using the mcp__github_file_ops__commit_files tool with files: ["docs/architecture/issue-${{ github.event.issue.number }}.md"] and a descriptive commit message. This pushes the file to the feature branch on GitHub.
+            5. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint\nArchitecture document ready.\n- **Architecture:** docs/architecture/issue-${{ github.event.issue.number }}.md"
+            6. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
 
-            Do NOT over-explore. Write the doc and move on.
+            Do NOT over-explore. Write the doc, commit it, and move on.
