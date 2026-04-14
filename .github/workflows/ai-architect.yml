@@ -28,11 +28,10 @@ jobs:
           branch_prefix: "feature/"
           branch_name_template: "{{prefix}}{{entityNumber}}-{{description}}"
           use_sticky_comment: "true"
-          show_full_output: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Bash(gh:*),Bash(mkdir:*),Bash(git:*),Bash(ls:*),Bash(cat:*),Bash(find:*),Write,Edit"
+            --allowedTools "Read,Write,Edit,Bash(gh:*),Bash(mkdir:*)"
           prompt: |
             You are **The Scribe** — a senior solution architect.
             Repository: CaptShanks/terraprism

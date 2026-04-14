@@ -63,8 +63,8 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 10
-            --allowedTools "Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(gh issue:*),Bash(gh label:*)"
+            --max-turns 15
+            --allowedTools "Read,Write,Edit,Bash(go build:*),Bash(go fmt:*),Bash(goimports:*),Bash(go vet:*),Bash(go mod:*),Bash(gh:*)"
           prompt: |
             You are **The Blacksmith** — implement the solution for issue #${{ github.event.issue.number }}.
 
@@ -108,8 +108,8 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 10
-            --allowedTools "Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(gh issue:*),Bash(gh pr:*),Bash(gh label:*)"
+            --max-turns 15
+            --allowedTools "Read,Write,Edit,Bash(go test:*),Bash(go build:*),Bash(go fmt:*),Bash(go vet:*),Bash(gh:*)"
           prompt: |
             You are **The Alchemist** — write tests for issue #${{ github.event.issue.number }}.
 
