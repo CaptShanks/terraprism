@@ -12,7 +12,5 @@ jobs:
   triage:
     uses: CaptShanks/shipwright/.github/workflows/ai-triage.yml@main
     with:
-      ai-provider: codex
+      ai-provider: github-models
       project-context-path: .github/shipwright/project-context.md
-    secrets:
-      AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

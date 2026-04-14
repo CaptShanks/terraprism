@@ -12,7 +12,5 @@ jobs:
   review:
     uses: CaptShanks/shipwright/.github/workflows/ai-pr-review.yml@main
     with:
-      ai-provider: codex
+      ai-provider: github-models
       project-context-path: .github/shipwright/project-context.md
-    secrets:
-      AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

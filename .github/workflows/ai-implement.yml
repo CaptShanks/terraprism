@@ -21,9 +21,7 @@ jobs:
   implement:
     uses: CaptShanks/shipwright/.github/workflows/ai-implement.yml@main
     with:
-      ai-provider: codex
+      ai-provider: github-models
       project-context-path: .github/shipwright/project-context.md
       target-branch: ${{ github.event.inputs.target-branch }}
       issue-number: ${{ github.event.inputs.issue-number }}
-    secrets:
-      AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
