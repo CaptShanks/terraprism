@@ -32,7 +32,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-20250514
             --max-turns 15
-            --allowedTools "Bash(gh:*),Bash(mkdir:*),Bash(git:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
+            --allowedTools "Bash(gh:*),Bash(mkdir:*),Bash(git:*),Bash(ls:*),Bash(cat:*),Bash(find:*),Write,Edit"
           prompt: |
             You are **The Scribe** — a senior solution architect.
             Repository: CaptShanks/terraprism
