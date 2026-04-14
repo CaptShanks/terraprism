@@ -635,26 +635,9 @@ func runStateMode(args []string) {
 	}
 }
 
-// runVersionMode displays terraprism version and terraform/tofu version
+// runVersionMode displays terraprism version
 func runVersionMode() {
-	fmt.Printf("terraprism v%s\n\n", version)
-
-	tfCmd := detectTFCommand()
-	fmt.Printf("%s version:\n", tfCmd)
-
-	cmd := exec.Command(tfCmd, "version")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "  %s not found or failed to run\n", tfCmd)
-	}
-
-	// Check for updates (skip if disabled)
-	if !updater.IsSkipUpdateCheck() {
-		if latest, hasUpdate, err := updater.CheckLatest(version); err == nil && hasUpdate {
-			fmt.Printf("\nUpdate available: v%s. Run 'terraprism upgrade' to update (or re-run the install script).\n", latest)
-		}
-	}
+	fmt.Printf("terraprism v%s\n", version)
 }
 
 // runUpgradeMode upgrades terraprism to the latest version
