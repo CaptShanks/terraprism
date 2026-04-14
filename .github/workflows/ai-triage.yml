@@ -18,3 +18,5 @@ jobs:
     with:
       ai-provider: github-models
       project-context-path: .github/shipwright/project-context.md
+    secrets:
+      AI_API_KEY: ${{ secrets.GH_MODELS_TOKEN }}

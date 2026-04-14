@@ -30,3 +30,5 @@ jobs:
       project-context-path: .github/shipwright/project-context.md
       target-branch: ${{ github.event.inputs.target-branch }}
       issue-number: ${{ github.event.inputs.issue-number }}
+    secrets:
+      AI_API_KEY: ${{ secrets.GH_MODELS_TOKEN }}
