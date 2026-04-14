@@ -55,7 +55,8 @@ type Plan struct {
 // Parse parses a Terraform plan output string
 func Parse(input string) (*Plan, error) {
 	plan := &Plan{
-		RawPlan: input,
+		Resources: []Resource{}, // Initialize as empty slice instead of nil
+		RawPlan:   input,
 	}
 
 	lines := strings.Split(input, "\n")
