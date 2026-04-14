@@ -13,6 +13,11 @@ on:
         type: string
         default: 'dev'
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
 concurrency:
   group: ai-implement-${{ github.event.inputs.issue-number }}
   cancel-in-progress: false
