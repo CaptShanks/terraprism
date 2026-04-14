@@ -42,7 +42,7 @@ jobs:
           agent-role: architect
           claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           project-context-path: "CLAUDE.md"
-          max-turns: "15"
+          max-turns: "20"
           agent-prompt: |
             You are **The Scribe** — your guild name in this project.
             Repository: ${{ github.repository }}

@@ -65,7 +65,7 @@ jobs:
           agent-role: implementer
           claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           project-context-path: "CLAUDE.md"
-          max-turns: "15"
+          max-turns: "25"
           agent-prompt: |
             You are **The Blacksmith** — your guild name in this project.
             Branch: ${{ needs.find-branch.outputs.branch }}
