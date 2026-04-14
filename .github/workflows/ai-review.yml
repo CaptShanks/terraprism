@@ -30,12 +30,32 @@ jobs:
       - name: Run tests
         id: tests
         continue-on-error: true
-        run: go test -v -race -cover ./... 2>&1 | tee test-results.txt
+        run: |
+          go test -v -race -cover ./... 2>&1 | tee test-results.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Run go vet
         id: vet
         continue-on-error: true
-        run: go vet ./... 2>&1 | tee vet-results.txt
+        run: |
+          go vet ./... 2>&1 | tee vet-results.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Run gosec
+        id: gosec
+        continue-on-error: true
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt text ./... 2>&1 | tee gosec-results.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Run golangci-lint
+        id: lint
+        continue-on-error: true
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.0
+          golangci-lint run ./... 2>&1 | tee lint-results.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Run The Inquisitor
         uses: anthropics/claude-code-action@v1
@@ -50,43 +70,32 @@ jobs:
           prompt: |
             You are **The Inquisitor** — a senior staff engineer and security reviewer. No bug escapes your inspection.
 
+            ## Pre-computed results
+            The following checks have already run. Read each file for details:
+            - **Tests:** `test-results.txt` (exit code: ${{ steps.tests.outputs.exit_code || steps.tests.outcome }})
+            - **Go vet:** `vet-results.txt` (exit code: ${{ steps.vet.outputs.exit_code || steps.vet.outcome }})
+            - **Gosec:** `gosec-results.txt` (exit code: ${{ steps.gosec.outputs.exit_code || steps.gosec.outcome }})
+            - **Lint:** `lint-results.txt` (exit code: ${{ steps.lint.outputs.exit_code || steps.lint.outcome }})
+
             ## Your Mission
-            Review this pull request thoroughly for code quality, security, and correctness.
+            Review this pull request for code quality, security, and correctness.
 
             ## Process
-            1. Read the PR description and linked issue
-            2. If an architecture doc exists in `docs/architecture/`, read it for intended design
-            3. Review ALL changed files in the diff
-            4. Read the test results from `test-results.txt` and vet results from `vet-results.txt`
-            5. Perform security analysis
-            6. Post your review
+            1. Read the PR diff: `gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }}`
+            2. If an architecture doc exists in `docs/architecture/`, read it
+            3. Read ALL four result files above
+            4. Post your review as a SINGLE PR comment
 
             ## Code Review Checklist
-            - [ ] Code follows existing project patterns and Go conventions
-            - [ ] Error handling is comprehensive (no swallowed errors)
-            - [ ] Exported functions have godoc comments
-            - [ ] No hardcoded secrets, credentials, or sensitive data
-            - [ ] No unnecessary dependencies added
-            - [ ] Changes are scoped to the issue — no unrelated modifications
-
-            ## Security Review
-            Check for:
-            - **Input validation**: All external inputs sanitized
-            - **Error exposure**: No sensitive info in error messages
-            - **Resource management**: Files/connections properly closed (defer)
-            - **Race conditions**: Shared state properly synchronized
-            - **Dependency security**: New dependencies are well-maintained and licensed appropriately
-            - **Terraform plan data**: Sensitive attributes not logged or persisted
-
-            ## Test Review
-            Check for:
-            - Adequate coverage of new code
-            - Edge cases and error paths tested
-            - No flaky test patterns (sleep, time-dependent, order-dependent)
-            - Test names describe behavior clearly
+            - Code follows existing project patterns and Go conventions
+            - Error handling is comprehensive (no swallowed errors)
+            - Exported functions have godoc comments
+            - No hardcoded secrets, credentials, or sensitive data
+            - No unnecessary dependencies added
+            - Changes are scoped to the issue — no unrelated modifications
 
             ## Your Output
-            Post a SINGLE PR review comment with this format:
+            Post a SINGLE PR comment using `gh pr comment`. Use this exact format:
 
             ### The Inquisitor's Report
 
@@ -94,16 +103,22 @@ jobs:
 
             ---
 
+            #### Tests
+            | Check | Status |
+            |-------|--------|
+            | Unit Tests | :white_check_mark: / :x: pass/fail |
+            | Go Vet | :white_check_mark: / :x: pass/fail |
+            | Lint | :white_check_mark: / :x: pass/fail |
+            | Gosec | :white_check_mark: / :x: pass/fail |
+
+            [If any failed, summarize the key failures]
+
+            #### Security Scan (gosec)
+            - **Findings:** [number of new findings in changed files, or "None"]
+            - [List any HIGH severity findings from gosec-results.txt that affect files changed in this PR]
+
             #### Code Quality
             [Findings about code structure, patterns, conventions]
-
-            #### Security Scan
-            [Security findings — categorize as Critical / Warning / Clean]
-
-            #### Test Assessment
-            - Tests passing: [yes/no]
-            - Coverage: [assessment]
-            - Missing coverage: [areas that need more tests]
 
             #### Findings
 
