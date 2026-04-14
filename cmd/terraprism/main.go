@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/CaptShanks/terraprism/internal/history"
+	jsonoutput "github.com/CaptShanks/terraprism/internal/output"
 	"github.com/CaptShanks/terraprism/internal/parser"
 	"github.com/CaptShanks/terraprism/internal/tui"
 	"github.com/CaptShanks/terraprism/internal/updater"
@@ -21,6 +22,7 @@ const version = "0.11.0"
 
 var (
 	printMode  = false
+	jsonMode   = false
 	forceLight = false
 	forceDark  = false
 	useTofu    = false
@@ -63,6 +65,17 @@ func main() {
 	} else if forceDark {
 		tui.SetDarkPalette()
 	}
+
+	// Parse global --json flag
+	var filteredArgs []string
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonMode = true
+		} else {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+	args = filteredArgs
 
 	// Dispatch on args[0]
 	if len(args) == 0 {
@@ -119,6 +132,8 @@ func parseApplyArgs(args []string) []string {
 		case "--help", "-h":
 			printApplyUsage()
 			os.Exit(0)
+		case "--json":
+			jsonMode = true
 		case "--":
 			tfArgs = append(tfArgs, args[i+1:]...)
 			return tfArgs
@@ -202,11 +217,32 @@ func runApplyMode(args []string, isDestroy bool) {
 		os.Exit(1)
 	}
 	if len(plan.Resources) == 0 {
-		fmt.Println("No changes. Infrastructure is up-to-date.")
+		if jsonMode {
+			// Output empty plan as JSON
+			jsonBytes, err := jsonoutput.ToJSON(plan, version, commandName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error generating JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Print(string(jsonBytes))
+		} else {
+			fmt.Println("No changes. Infrastructure is up-to-date.")
+		}
 		if historyPath != "" {
 			_, _ = history.UpdateFilenameWithStatus(historyPath, "nochanges")
 		}
 		os.Exit(0)
+	}
+
+	// Check if JSON output is requested
+	if jsonMode {
+		jsonBytes, err := jsonoutput.ToJSON(plan, version, commandName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(string(jsonBytes))
+		return
 	}
 
 	model := tui.NewModelWithApply(plan, planFile, tfCmd, version)
@@ -244,6 +280,8 @@ func runPlanMode(args []string) {
 		case "--help", "-h":
 			printUsage()
 			os.Exit(0)
+		case "--json":
+			jsonMode = true
 		case "--":
 			tfArgs = append(tfArgs, args[i+1:]...)
 			i = len(args)
@@ -288,8 +326,29 @@ func runPlanMode(args []string) {
 	}
 
 	if len(plan.Resources) == 0 {
-		fmt.Println("No changes. Infrastructure is up-to-date.")
+		if jsonMode {
+			// Output empty plan as JSON
+			jsonBytes, err := jsonoutput.ToJSON(plan, version, "plan")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error generating JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Print(string(jsonBytes))
+		} else {
+			fmt.Println("No changes. Infrastructure is up-to-date.")
+		}
 		os.Exit(0)
+	}
+
+	// Check if JSON output is requested
+	if jsonMode {
+		jsonBytes, err := jsonoutput.ToJSON(plan, version, "plan")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(string(jsonBytes))
+		return
 	}
 
 	// Go straight to TUI
@@ -495,6 +554,16 @@ func runHistoryView(args []string) {
 		os.Exit(1)
 	}
 
+	if jsonMode {
+		jsonBytes, err := jsonoutput.ToJSON(plan, version, "history")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(string(jsonBytes))
+		return
+	}
+
 	if printMode {
 		tui.PrintPlan(plan)
 		return
@@ -686,6 +755,8 @@ func runViewMode(args []string) {
 		switch args[i] {
 		case "-p", "--print":
 			printMode = true
+		case "--json":
+			jsonMode = true
 		default:
 			if !strings.HasPrefix(args[i], "-") {
 				inputFile = args[i]
@@ -735,7 +806,27 @@ func runViewMode(args []string) {
 	}
 
 	if len(plan.Resources) == 0 {
-		fmt.Println("No resource changes detected in the plan.")
+		if jsonMode {
+			// Output empty plan as JSON
+			jsonBytes, err := jsonoutput.ToJSON(plan, version, "view")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error generating JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Print(string(jsonBytes))
+		} else {
+			fmt.Println("No resource changes detected in the plan.")
+		}
+		os.Exit(0)
+	}
+
+	if jsonMode {
+		jsonBytes, err := jsonoutput.ToJSON(plan, version, "view")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(string(jsonBytes))
 		os.Exit(0)
 	}
 
@@ -788,6 +879,7 @@ COMMANDS:
 GLOBAL OPTIONS:
     -h, --help      Show this help
     -v, --version   Show version (includes update check)
+    --json          Output machine-readable JSON format
 
 ENVIRONMENT:
     TERRAPRISM_TOFU   Set to 1, true, or yes to use OpenTofu
@@ -835,6 +927,10 @@ EXAMPLES:
 
     # View history
     terraprism history
+
+    # JSON output for CI/CD integration
+    terraprism --json plan
+    terraform plan -no-color | terraprism --json
 
 `, version)
 }
