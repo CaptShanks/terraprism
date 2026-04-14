@@ -54,6 +54,7 @@ jobs:
             - Be DECISIVE. Present ONE clear solution, not multiple alternatives.
             - Never list options with a "recommended" tag. Just state what you will do and why.
             - Include Mermaid diagrams to visually communicate the design.
+            - In Mermaid diagrams, avoid special characters in node labels that break rendering. Use quotes around labels containing dashes, pipes, or braces: e.g. `C{"no-color flag?"}` not `C{--no-color flag?}`.
 
             ## Steps (do them in order, be efficient)
             1. Read CLAUDE.md for project context
