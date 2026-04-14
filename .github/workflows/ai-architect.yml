@@ -28,23 +28,22 @@ jobs:
           branch_prefix: "feature/"
           branch_name_template: "{{prefix}}{{entityNumber}}-{{description}}"
           use_sticky_comment: "true"
+          show_full_output: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 10
-            --allowedTools "Bash(gh issue:*),Bash(gh label:*),Bash(mkdir:*),Bash(git:*)"
+            --max-turns 15
+            --allowedTools "Bash(gh:*),Bash(mkdir:*),Bash(git:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
           prompt: |
-            You are **The Scribe** — a senior solution architect for the Terraprism project.
+            You are **The Scribe** — a senior solution architect.
             Repository: CaptShanks/terraprism
 
-            ## Your Mission
-            Design a concrete implementation plan for issue #${{ github.event.issue.number }}.
+            Design an implementation plan for issue #${{ github.event.issue.number }}.
 
-            ## Instructions
-            1. Read CLAUDE.md for project context
-            2. Read the issue (title + body are in the GitHub context already provided)
-            3. Read 2-3 key source files to understand scope
-            4. Create `docs/architecture/issue-${{ github.event.issue.number }}.md` with: Problem Statement, Affected Components, Solution Design, Implementation Steps, File Changes table, Testing Strategy
-            5. Run: gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint\nArchitecture document ready.\n- **Architecture:** docs/architecture/issue-${{ github.event.issue.number }}.md"
-            6. Run: gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
+            Steps (do them in order, be efficient):
+            1. Read CLAUDE.md
+            2. Read 1-2 relevant source files
+            3. Create docs/architecture/issue-${{ github.event.issue.number }}.md with: Problem Statement, Affected Components, Solution Design, Implementation Steps, File Changes table, Testing Strategy
+            4. gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint\nArchitecture document ready.\n- **Architecture:** docs/architecture/issue-${{ github.event.issue.number }}.md"
+            5. gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
 
-            Be concise and efficient. Do not over-explore the codebase.
+            Do NOT over-explore. Write the doc and move on.
