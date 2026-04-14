@@ -8,7 +8,7 @@ jobs:
   review:
     if: |
       !github.event.pull_request.draft &&
-      startsWith(github.event.pull_request.head.ref, 'shipwright/')
+      startsWith(github.event.pull_request.head.ref, 'feature/')
     runs-on: ubuntu-latest
     permissions:
       contents: read

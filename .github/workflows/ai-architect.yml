@@ -24,8 +24,8 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           base_branch: dev
-          branch_prefix: "shipwright/"
-          branch_name_template: "{{prefix}}issue-${{ github.event.issue.number }}"
+          branch_prefix: "feature/"
+          branch_name_template: "{{prefix}}{{entityNumber}}-{{description}}"
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
@@ -87,7 +87,7 @@ jobs:
 
             Architecture document ready for The Blacksmith.
 
-            - **Branch:** `shipwright/issue-${{ github.event.issue.number }}`
+            - **Branch:** `[branch name you created]`
             - **Architecture:** `docs/architecture/issue-${{ github.event.issue.number }}.md`
 
             [2-3 sentence summary of the approach]

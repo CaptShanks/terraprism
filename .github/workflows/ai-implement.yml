@@ -5,23 +5,48 @@ on:
     types: [labeled]
 
 jobs:
+  find-branch:
+    name: "Resolve feature branch"
+    if: github.event.action == 'labeled' && github.event.label.name == 'status:architected'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      branch: ${{ steps.resolve.outputs.branch }}
+    steps:
+      - name: Find feature branch for this issue
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          BRANCH=$(gh api "repos/${{ github.repository }}/branches" \
+            --paginate --jq ".[].name" \
+            | grep "^feature/${ISSUE_NUMBER}-" \
+            | head -1)
+
+          if [ -z "$BRANCH" ]; then
+            echo "::error::No feature branch found matching feature/${ISSUE_NUMBER}-*"
+            exit 1
+          fi
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "Found branch: ${BRANCH}"
+
   implement:
     name: "The Blacksmith"
-    if: github.event.action == 'labeled' && github.event.label.name == 'status:architected'
+    needs: find-branch
     runs-on: ubuntu-latest
     permissions:
       contents: write
       issues: write
       pull-requests: write
       id-token: write
-    outputs:
-      branch_name: ${{ steps.blacksmith.outputs.branch_name }}
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: shipwright/issue-${{ github.event.issue.number }}
+          ref: ${{ needs.find-branch.outputs.branch }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -34,8 +59,8 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           base_branch: dev
-          branch_prefix: "shipwright/"
-          branch_name_template: "{{prefix}}issue-${{ github.event.issue.number }}"
+          branch_prefix: "feature/"
+          branch_name_template: "{{prefix}}${{ github.event.issue.number }}-{{description}}"
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
@@ -76,7 +101,7 @@ jobs:
 
             ### ⚒️ The Blacksmith's Work
 
-            Implementation complete on branch `shipwright/issue-${{ github.event.issue.number }}`.
+            Implementation complete on branch `${{ needs.find-branch.outputs.branch }}`.
 
             **Changes:**
             - [List of files created/modified with brief descriptions]
@@ -88,7 +113,7 @@ jobs:
 
   test:
     name: "The Alchemist"
-    needs: implement
+    needs: [find-branch, implement]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,10 +125,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: shipwright/issue-${{ github.event.issue.number }}
+          ref: ${{ needs.find-branch.outputs.branch }}
 
       - name: Pull latest changes from Blacksmith
-        run: git pull origin shipwright/issue-${{ github.event.issue.number }} --rebase
+        run: git pull origin ${{ needs.find-branch.outputs.branch }} --rebase
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -115,8 +140,8 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           base_branch: dev
-          branch_prefix: "shipwright/"
-          branch_name_template: "{{prefix}}issue-${{ github.event.issue.number }}"
+          branch_prefix: "feature/"
+          branch_name_template: "{{prefix}}${{ github.event.issue.number }}-{{description}}"
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
@@ -143,7 +168,7 @@ jobs:
             - Use `t.Parallel()` where safe
             - Test file naming: `*_test.go` colocated with source
             - Use `testdata/` for test fixtures when needed
-            - Test names should describe behavior: `TestParseplan_WithEmptyInput_ReturnsError`
+            - Test names should describe behavior: `TestParsePlan_WithEmptyInput_ReturnsError`
 
             ## What to Test
             - **Happy path**: Normal expected usage
@@ -154,24 +179,10 @@ jobs:
 
             ## After testing:
             1. Ensure `go test -v -race -cover ./...` passes
-            2. Create a PR targeting the `dev` branch:
-               gh pr create --base dev --head shipwright/issue-${{ github.event.issue.number }} \
-                 --title "feat: [issue title from #${{ github.event.issue.number }}]" \
-                 --body "## Summary
-               Resolves #${{ github.event.issue.number }}
-
-               ## Architecture
-               See \`docs/architecture/issue-${{ github.event.issue.number }}.md\`
-
-               ## Changes
-               [List key changes]
-
-               ## Test Coverage
-               [Summary of tests added and coverage]
-
-               ---
-               *Forged by The Blacksmith ⚒️ | Tested by The Alchemist 🧪*" \
-                 --repo $GITHUB_REPOSITORY
+            2. Create a PR targeting the `dev` branch using the gh CLI:
+               - Title format: `feat: [short description from issue #${{ github.event.issue.number }}]`
+               - Body should include: summary, link to architecture doc, list of changes, test coverage, and "Resolves #${{ github.event.issue.number }}"
+               - Add footer: `*Forged by The Blacksmith ⚒️ | Tested by The Alchemist 🧪*`
 
             3. Post a comment on issue #${{ github.event.issue.number }}:
 
@@ -186,5 +197,5 @@ jobs:
 
             **PR:** [link to PR]
 
-            Then apply the label `status:in-review`:
+            Then apply the label `status:in-review` and remove `status:implemented`:
             gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo $GITHUB_REPOSITORY
