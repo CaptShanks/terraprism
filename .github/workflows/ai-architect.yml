@@ -58,8 +58,11 @@ jobs:
             3. Create docs/architecture/issue-${{ github.event.issue.number }}.md with: Problem Statement, Affected Components, Solution Design, Implementation Steps, File Changes table, Testing Strategy
             4. Commit and push your changes:
                git add -A && git commit -m "docs: add architecture for issue #${{ github.event.issue.number }}" && git push
-            5. Comment on the issue:
-               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint\nArchitecture document ready on branch \`${{ steps.branch.outputs.branch_name }}\`.\n- **Architecture:** docs/architecture/issue-${{ github.event.issue.number }}.md"
+            5. Comment on the issue (use this exact body with proper markdown links):
+               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint
+            Architecture document ready.
+            - **Branch:** [${{ steps.branch.outputs.branch_name }}](https://github.com/CaptShanks/terraprism/tree/${{ steps.branch.outputs.branch_name }})
+            - **Architecture:** [issue-${{ github.event.issue.number }}.md](https://github.com/CaptShanks/terraprism/blob/${{ steps.branch.outputs.branch_name }}/docs/architecture/issue-${{ github.event.issue.number }}.md)"
             6. Apply label:
                gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
 
