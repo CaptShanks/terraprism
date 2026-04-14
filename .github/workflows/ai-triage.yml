@@ -3,6 +3,8 @@ name: AI Triage
 on:
   issues:
     types: [opened, reopened]
+  issue_comment:
+    types: [created]
 
 permissions:
   issues: write
@@ -14,6 +16,14 @@ concurrency:
 
 jobs:
   triage:
+    if: >-
+      github.event_name == 'issues' ||
+      (
+        github.event_name == 'issue_comment' &&
+        !github.event.issue.pull_request &&
+        github.event.comment.user.login != 'github-actions[bot]' &&
+        contains(toJSON(github.event.issue.labels.*.name), 'status:needs-info')
+      )
     uses: CaptShanks/shipwright/.github/workflows/ai-triage.yml@main
     with:
       ai-provider: github-models

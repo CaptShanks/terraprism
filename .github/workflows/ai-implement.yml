@@ -1,6 +1,8 @@
 name: AI Implement
 
 on:
+  issues:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       issue-number:
@@ -19,16 +21,19 @@ permissions:
   issues: write
 
 concurrency:
-  group: ai-implement-${{ github.event.inputs.issue-number }}
+  group: ai-implement-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.issue-number || github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   implement:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'status:ready')
     uses: CaptShanks/shipwright/.github/workflows/ai-implement.yml@main
     with:
       ai-provider: github-models
       project-context-path: .github/shipwright/project-context.md
-      target-branch: ${{ github.event.inputs.target-branch }}
-      issue-number: ${{ github.event.inputs.issue-number }}
+      target-branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target-branch || 'dev' }}
+      issue-number: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.issue-number || format('{0}', github.event.issue.number) }}
     secrets:
       AI_API_KEY: ${{ secrets.GH_MODELS_TOKEN }}
