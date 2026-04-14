@@ -78,8 +78,10 @@ jobs:
             4. Commit and push:
                git add -A && git commit -m "feat: implement issue #${{ github.event.issue.number }}" && git push
             5. Do NOT write tests or create a PR
-            6. Comment on the issue:
-               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Blacksmith's Work\nImplementation complete on branch \`${{ needs.find-branch.outputs.branch }}\`. Ready for The Alchemist."
+            6. Comment on the issue with proper markdown formatting:
+               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Blacksmith's Work
+
+            Implementation complete on branch \`${{ needs.find-branch.outputs.branch }}\`. Ready for The Alchemist."
             7. Apply label:
                gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo ${{ github.repository }}
 
@@ -134,6 +136,8 @@ jobs:
             5. Create a PR targeting dev and capture the URL:
                PR_URL=$(gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "Resolves #${{ github.event.issue.number }}" --repo ${{ github.repository }})
             6. Comment on the issue with a link to the PR:
-               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Alchemist's Report\nTests complete. PR created: $PR_URL"
+               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Alchemist's Report
+
+            Tests complete. PR created: $PR_URL"
             7. Apply label:
                gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo ${{ github.repository }}
