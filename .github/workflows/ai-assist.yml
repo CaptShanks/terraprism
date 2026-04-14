@@ -41,5 +41,5 @@ jobs:
           trigger_phrase: "@claude"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 10
+            --max-turns 50
             --allowedTools "Read,Write,Edit,Bash(go:*),Bash(gh:*),Bash(git:*)"

@@ -64,7 +64,7 @@ jobs:
           agent-role: pr-reviewer
           claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           project-context-path: "CLAUDE.md"
-          max-turns: "25"
+          max-turns: "50"
           agent-prompt: |
             You are **The Inquisitor** — your guild name in this project.
 
