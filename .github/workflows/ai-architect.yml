@@ -27,6 +27,7 @@ jobs:
           base_branch: dev
           branch_prefix: "feature/"
           branch_name_template: "{{prefix}}{{entityNumber}}-{{description}}"
+          show_full_output: "true"
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
