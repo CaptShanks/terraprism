@@ -59,19 +59,18 @@ jobs:
           go-version: "1.24"
 
       - name: Run The Blacksmith
-        id: blacksmith
-        uses: anthropics/claude-code-action@v1
+        uses: CaptShanks/shipwright/actions/run-ai-agent@main
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: "claude[bot]"
-          use_sticky_comment: "true"
-          claude_args: |
-            --model claude-sonnet-4-20250514
-            --max-turns 15
-            --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash(git:*),Bash(go:*),Bash(goimports:*),Bash(gh:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
-          prompt: |
-            You are **The Blacksmith** — implement the solution for issue #${{ github.event.issue.number }}.
+          ai-provider: claude
+          agent-role: implementer
+          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          project-context-path: "CLAUDE.md"
+          max-turns: "15"
+          agent-prompt: |
+            You are **The Blacksmith** — your guild name in this project.
             Branch: ${{ needs.find-branch.outputs.branch }}
+
+            Implement the solution for issue #${{ github.event.issue.number }}.
 
             1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md` for the plan
             2. Implement the solution following existing code patterns
@@ -80,9 +79,9 @@ jobs:
                git add -A && git commit -m "feat: implement issue #${{ github.event.issue.number }}" && git push
             5. Do NOT write tests or create a PR
             6. Comment on the issue:
-               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Blacksmith's Work\nImplementation complete on branch \`${{ needs.find-branch.outputs.branch }}\`. Ready for The Alchemist."
+               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Blacksmith's Work\nImplementation complete on branch \`${{ needs.find-branch.outputs.branch }}\`. Ready for The Alchemist."
             7. Apply label:
-               gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo CaptShanks/terraprism
+               gh issue edit ${{ github.event.issue.number }} --add-label "status:implemented" --repo ${{ github.repository }}
 
   test:
     name: "The Alchemist"
@@ -114,18 +113,18 @@ jobs:
           go-version: "1.24"
 
       - name: Run The Alchemist
-        uses: anthropics/claude-code-action@v1
+        uses: CaptShanks/shipwright/actions/run-ai-agent@main
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: "claude[bot]"
-          use_sticky_comment: "true"
-          claude_args: |
-            --model claude-sonnet-4-20250514
-            --max-turns 25
-            --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash(git:*),Bash(go:*),Bash(gh:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
-          prompt: |
-            You are **The Alchemist** — write tests for issue #${{ github.event.issue.number }}.
+          ai-provider: claude
+          agent-role: test-engineer
+          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          project-context-path: "CLAUDE.md"
+          max-turns: "25"
+          agent-prompt: |
+            You are **The Alchemist** — your guild name in this project.
             Branch: ${{ needs.find-branch.outputs.branch }}
+
+            Write tests for issue #${{ github.event.issue.number }}.
 
             1. Read `docs/architecture/issue-${{ github.event.issue.number }}.md`
             2. Write unit tests using table-driven patterns with t.Run
@@ -133,8 +132,8 @@ jobs:
             4. Commit and push test files:
                git add -A && git commit -m "test: add tests for issue #${{ github.event.issue.number }}" && git push
             5. Create a PR targeting dev and capture the URL:
-               PR_URL=$(gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "Resolves #${{ github.event.issue.number }}" --repo CaptShanks/terraprism)
+               PR_URL=$(gh pr create --base dev --title "feat: [description] (resolves #${{ github.event.issue.number }})" --body "Resolves #${{ github.event.issue.number }}" --repo ${{ github.repository }})
             6. Comment on the issue with a link to the PR:
-               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Alchemist's Report\nTests complete. PR created: $PR_URL"
+               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Alchemist's Report\nTests complete. PR created: $PR_URL"
             7. Apply label:
-               gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo CaptShanks/terraprism
+               gh issue edit ${{ github.event.issue.number }} --add-label "status:in-review" --remove-label "status:implemented" --repo ${{ github.repository }}

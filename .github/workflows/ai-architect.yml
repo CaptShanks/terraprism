@@ -36,24 +36,22 @@ jobs:
           echo "branch_name=$BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Run The Scribe
-        uses: anthropics/claude-code-action@v1
+        uses: CaptShanks/shipwright/actions/run-ai-agent@main
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: "claude[bot]"
-          use_sticky_comment: "true"
-          claude_args: |
-            --model claude-sonnet-4-20250514
-            --max-turns 15
-            --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash(git:*),Bash(gh:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
-          prompt: |
-            You are **The Scribe** — a senior solution architect.
-            Repository: CaptShanks/terraprism
+          ai-provider: claude
+          agent-role: architect
+          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          project-context-path: "CLAUDE.md"
+          max-turns: "15"
+          agent-prompt: |
+            You are **The Scribe** — your guild name in this project.
+            Repository: ${{ github.repository }}
             Branch: ${{ steps.branch.outputs.branch_name }}
 
             Design an implementation plan for issue #${{ github.event.issue.number }}.
 
             ## Behavioral rules
-            - Be DECISIVE. Present ONE clear solution, not multiple alternatives. You are a senior architect — make the call.
+            - Be DECISIVE. Present ONE clear solution, not multiple alternatives.
             - Never list options with a "recommended" tag. Just state what you will do and why.
             - Include Mermaid diagrams to visually communicate the design.
 
@@ -63,18 +61,18 @@ jobs:
             3. Create docs/architecture/issue-${{ github.event.issue.number }}.md with these sections:
                - **Problem Statement**: What the issue asks for and why it matters
                - **Solution Design**: The chosen approach with rationale (one approach, no alternatives)
-               - **Architecture Diagram**: A Mermaid diagram (flowchart, sequence, or class diagram — whichever fits best) showing how components interact
+               - **Architecture Diagram**: A Mermaid diagram showing how components interact
                - **Implementation Steps**: Ordered list of what The Blacksmith should do
                - **File Changes**: Table of files to create/modify with a summary of each change
                - **Testing Strategy**: What The Alchemist should test, including edge cases
             4. Commit and push your changes:
                git add -A && git commit -m "docs: add architecture for issue #${{ github.event.issue.number }}" && git push
-            5. Comment on the issue (use this exact body with proper markdown links):
-               gh issue comment ${{ github.event.issue.number }} --repo CaptShanks/terraprism --body "### The Scribe's Blueprint
+            5. Comment on the issue (use proper markdown links):
+               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Scribe's Blueprint
             Architecture document ready.
-            - **Branch:** [${{ steps.branch.outputs.branch_name }}](https://github.com/CaptShanks/terraprism/tree/${{ steps.branch.outputs.branch_name }})
-            - **Architecture:** [issue-${{ github.event.issue.number }}.md](https://github.com/CaptShanks/terraprism/blob/${{ steps.branch.outputs.branch_name }}/docs/architecture/issue-${{ github.event.issue.number }}.md)"
+            - **Branch:** [${{ steps.branch.outputs.branch_name }}](https://github.com/${{ github.repository }}/tree/${{ steps.branch.outputs.branch_name }})
+            - **Architecture:** [issue-${{ github.event.issue.number }}.md](https://github.com/${{ github.repository }}/blob/${{ steps.branch.outputs.branch_name }}/docs/architecture/issue-${{ github.event.issue.number }}.md)"
             6. Apply label:
-               gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo CaptShanks/terraprism
+               gh issue edit ${{ github.event.issue.number }} --add-label "status:architected" --repo ${{ github.repository }}
 
             Do NOT over-explore. Write the doc, commit, and move on.

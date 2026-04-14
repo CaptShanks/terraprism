@@ -58,17 +58,15 @@ jobs:
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Run The Inquisitor
-        uses: anthropics/claude-code-action@v1
+        uses: CaptShanks/shipwright/actions/run-ai-agent@main
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: "claude[bot]"
-          use_sticky_comment: "true"
-          claude_args: |
-            --model claude-sonnet-4-20250514
-            --max-turns 25
-            --allowedTools "Read,Glob,Grep,LS,Bash(gh:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(go test:*),Bash(go vet:*)"
-          prompt: |
-            You are **The Inquisitor** — a senior staff engineer and security reviewer. No bug escapes your inspection.
+          ai-provider: claude
+          agent-role: pr-reviewer
+          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          project-context-path: "CLAUDE.md"
+          max-turns: "25"
+          agent-prompt: |
+            You are **The Inquisitor** — your guild name in this project.
 
             ## Pre-computed results
             The following checks have already run. Read each file for details:
@@ -77,8 +75,8 @@ jobs:
             - **Gosec:** `gosec-results.txt` (exit code: ${{ steps.gosec.outputs.exit_code || steps.gosec.outcome }})
             - **Lint:** `lint-results.txt` (exit code: ${{ steps.lint.outputs.exit_code || steps.lint.outcome }})
 
-            ## Your Mission
-            Review this pull request for code quality, security, and correctness.
+            ## Task
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
 
             ## Process
             1. Read the PR diff: `gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }}`
@@ -86,16 +84,8 @@ jobs:
             3. Read ALL four result files above
             4. Post your review as a SINGLE PR comment
 
-            ## Code Review Checklist
-            - Code follows existing project patterns and Go conventions
-            - Error handling is comprehensive (no swallowed errors)
-            - Exported functions have godoc comments
-            - No hardcoded secrets, credentials, or sensitive data
-            - No unnecessary dependencies added
-            - Changes are scoped to the issue — no unrelated modifications
-
             ## Your Output
-            Post a SINGLE PR comment using `gh pr comment`. Use this exact format:
+            Post a SINGLE PR comment using `gh pr comment`. Use this format:
 
             ### The Inquisitor's Report
 

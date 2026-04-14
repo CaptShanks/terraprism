@@ -29,48 +29,21 @@ jobs:
           fetch-depth: 1
 
       - name: Run The Gatekeeper
-        uses: anthropics/claude-code-action@v1
+        uses: CaptShanks/shipwright/actions/run-ai-agent@main
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          trigger_phrase: "none-disabled"
-          use_sticky_comment: "true"
-          claude_args: |
-            --model claude-sonnet-4-20250514
-            --max-turns 5
-            --allowedTools "Read,Bash(gh issue:*),Bash(gh label:*)"
-          prompt: |
-            You are **The Gatekeeper** — a senior triage engineer for the Terraprism project.
+          ai-provider: claude
+          agent-role: triage
+          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          project-context-path: "CLAUDE.md"
+          max-turns: "5"
+          agent-prompt: |
+            You are **The Gatekeeper** — your guild name in this project.
 
-            ## Context
-            You are triaging issue #${{ github.event.issue.number }} in the ${{ github.repository }} repository.
+            ## Task
+            Triage issue #${{ github.event.issue.number }} in ${{ github.repository }}.
             Issue title: "${{ github.event.issue.title }}"
 
-            ## Your Mission
-            Rapidly assess this issue and determine if it is actionable or needs more information.
-
-            ## Rules
-            1. Do NOT implement fixes, design features, or commit code
-            2. Do NOT create branches or PRs
-            3. Read the full issue (title, body, all comments) using: gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }}
-            4. Determine if this is a bug, feature, or task
-
-            ## Decision Framework
-            - **ready**: Issue has clear scope, acceptance criteria (for features), or reproduction steps (for bugs)
-            - **needs-info**: Missing critical details — ask the MINIMUM set of targeted questions
-            - **reject**: Out of scope, duplicate, or clearly invalid
-            - **duplicate**: Link to the original issue
-
-            ## For features — ready when:
-            - Problem statement is clear
-            - Acceptance criteria are testable
-            - Scope is bounded
-
-            ## For bugs — ready when:
-            - Steps to reproduce exist
-            - Expected vs actual behavior is stated
-            - Environment details are provided (if relevant)
-
-            ## Actions (you MUST do both):
+            ## Actions (you MUST do both)
 
             ### 1. Apply labels
             First create any labels that don't exist, then apply them:
@@ -83,7 +56,7 @@ jobs:
 
             ### 2. Post your assessment as a comment
             ```
-            gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### 🏰 The Gatekeeper's Verdict
+            gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "### The Gatekeeper's Verdict
 
             **Decision:** \`ready\`
             **Type:** \`feature\`
@@ -95,4 +68,4 @@ jobs:
             [If ready: brief note on what the next step should be]"
             ```
 
-            IMPORTANT: You MUST run the gh CLI commands to apply labels AND post the comment. Do not just output text.
+            IMPORTANT: You MUST run the gh CLI commands to apply labels AND post the comment.
