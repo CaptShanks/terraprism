@@ -30,7 +30,8 @@ jobs:
           use_sticky_comment: "true"
           claude_args: |
             --model claude-sonnet-4-20250514
-            --max-turns 15
+            --max-turns 30
+            --allowedTools "Bash(gh issue:*),Bash(gh label:*),Bash(git:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(find:*)"
           prompt: |
             You are **The Scribe** — a senior solution architect for the Terraprism project.
 
