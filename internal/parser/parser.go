@@ -143,13 +143,19 @@ func parseNewFormat(plan *Plan, lines []string) {
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 		if match := resourceRegex.FindStringSubmatch(line); match != nil {
+			address := strings.TrimSpace(match[1])
+			if !isTerraformResourceAddress(address) {
+				if inResourceBlock && currentResource != nil {
+					currentResource.RawLines = append(currentResource.RawLines, line)
+				}
+				continue
+			}
 			if currentResource != nil {
 				plan.Resources = append(plan.Resources, *currentResource)
 			}
-			address := strings.TrimSpace(match[1])
 			currentResource = &Resource{
 				Address:  address,
-				Action:  parseActionFromLine(line),
+				Action:   parseActionFromLine(line),
 				RawLines: []string{line},
 			}
 			if parts := strings.Split(address, "."); len(parts) >= 2 {
@@ -183,10 +189,33 @@ func parseNewFormat(plan *Plan, lines []string) {
 	}
 }
 
+var terraformAddressIdentRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+
+func isTerraformResourceAddress(address string) bool {
+	address = strings.TrimSpace(address)
+	if address == "" || strings.HasPrefix(address, "-") {
+		return false
+	}
+	parts := strings.Split(address, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts[len(parts)-2:] {
+		base := strings.TrimSpace(part)
+		if idx := strings.Index(base, "["); idx >= 0 {
+			base = base[:idx]
+		}
+		if !terraformAddressIdentRegex.MatchString(base) {
+			return false
+		}
+	}
+	return true
+}
+
 type oldFormatResourcePattern struct {
-	re       *regexp.Regexp
-	action   Action
-	noColon  bool // resource lines (not attribute lines) must not contain ":"
+	re      *regexp.Regexp
+	action  Action
+	noColon bool // resource lines (not attribute lines) must not contain ":"
 }
 
 var oldFormatPatterns = []oldFormatResourcePattern{
@@ -203,7 +232,11 @@ func parseOldFormatResourceLine(line string) (address string, action Action, ok 
 			continue
 		}
 		if match := p.re.FindStringSubmatch(line); match != nil {
-			return strings.TrimSpace(match[1]), p.action, true
+			address := strings.TrimSpace(match[1])
+			if !isTerraformResourceAddress(address) {
+				continue
+			}
+			return address, p.action, true
 		}
 	}
 	return "", "", false

@@ -18,20 +18,24 @@ import (
 
 // Model represents the TUI state
 type Model struct {
-	plan          *parser.Plan
-	cursor        int
-	expanded      map[int]bool
-	viewport      viewport.Model
-	ready         bool
-	width         int
-	height        int
-	searching     bool
-	searchInput   textinput.Model
-	searchQuery   string
-	searchMatches []int
-	currentMatch  int
+	plan               *parser.Plan
+	cursor             int
+	expanded           map[int]bool
+	foldedBlocks       map[string]bool
+	blockCursor        int
+	diffContext        int
+	viewport           viewport.Model
+	ready              bool
+	width              int
+	height             int
+	searching          bool
+	searchInput        textinput.Model
+	searchQuery        string
+	searchMatches      []int
+	currentMatch       int
 	pendingG           bool  // Track if 'g' was pressed, waiting for second 'g'
 	resourceLineStarts []int // rendered line offset per resource (populated during render)
+	selectedLineStart  int   // rendered line offset for the current resource or sub-block cursor
 	contentLineCount   int   // total rendered content lines (excluding padding)
 
 	// Apply mode fields
@@ -43,13 +47,13 @@ type Model struct {
 
 	// Status filter fields
 	statusFilters map[parser.Action]bool // true = show resources with this action
-	filtering     bool                    // filter picker is open
-	filterCursor  int                     // cursor in filter picker
+	filtering     bool                   // filter picker is open
+	filterCursor  int                    // cursor in filter picker
 
 	// Sort fields
-	sortOrder   SortOrder // default, byAction, byAddress, byType
-	sorting     bool      // sort picker is open
-	sortCursor  int       // cursor in sort picker
+	sortOrder  SortOrder // default, byAction, byAddress, byType
+	sorting    bool      // sort picker is open
+	sortCursor int       // cursor in sort picker
 
 	// Update nudge
 	currentVersion  string // for update check
@@ -185,6 +189,9 @@ func NewModel(plan *parser.Plan, version string) Model {
 	return Model{
 		plan:           plan,
 		expanded:       make(map[int]bool),
+		foldedBlocks:   make(map[string]bool),
+		blockCursor:    -1,
+		diffContext:    defaultDiffContext,
 		searchInput:    ti,
 		searchMatches:  []int{},
 		applyMode:      false,
@@ -204,6 +211,9 @@ func NewModelWithApply(plan *parser.Plan, planFile, tfCommand, version string) M
 	return Model{
 		plan:           plan,
 		expanded:       make(map[int]bool),
+		foldedBlocks:   make(map[string]bool),
+		blockCursor:    -1,
+		diffContext:    defaultDiffContext,
 		searchInput:    ti,
 		searchMatches:  []int{},
 		applyMode:      true,
@@ -321,46 +331,83 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+const (
+	defaultDiffContext = 3
+	diffContextStep    = 3
+	maxDiffContext     = 30
+)
+
+func (m Model) diffContextSize() int {
+	return clampDiffContext(m.diffContext)
+}
+
+func clampDiffContext(context int) int {
+	if context < 0 {
+		return 0
+	}
+	if context > maxDiffContext {
+		return maxDiffContext
+	}
+	return context
+}
+
 // normalKeyHandler handles a single key in normal mode. Returns (model, cmd, quit).
 type normalKeyHandler func(m Model) (Model, tea.Cmd, bool)
 
 var normalKeyHandlers = map[string]normalKeyHandler{
-	"q": func(m Model) (Model, tea.Cmd, bool) { return m, tea.Quit, true },
-	"ctrl+c": func(m Model) (Model, tea.Cmd, bool) { return m, tea.Quit, true },
-	"up":    handleKeyUp,
-	"k":     handleKeyUp,
-	"down":  handleKeyDown,
-	"j":     handleKeyDown,
-	"enter": handleKeyEnter,
-	" ":     handleKeyEnter,
-	"e":     handleKeyExpandAll,
-	"c":     handleKeyCollapseAll,
-	"f":     handleKeyFilter,
-	"s":     handleKeySort,
-	"/":     handleKeySearch,
-	"n":     handleKeyNextMatch,
-	"N":     handleKeyPrevMatch,
-	"esc":   handleKeyEsc,
+	"q":         func(m Model) (Model, tea.Cmd, bool) { return m, tea.Quit, true },
+	"ctrl+c":    func(m Model) (Model, tea.Cmd, bool) { return m, tea.Quit, true },
+	"up":        handleKeyUp,
+	"k":         handleKeyUp,
+	"down":      handleKeyDown,
+	"j":         handleKeyDown,
+	"enter":     handleKeyEnter,
+	" ":         handleKeyEnter,
+	"e":         handleKeyExpandAll,
+	"E":         handleKeyExpandEverything,
+	"c":         handleKeyCollapseAll,
+	"C":         handleKeyCollapseEverything,
+	"f":         handleKeyFilter,
+	"s":         handleKeySort,
+	"/":         handleKeySearch,
+	"n":         handleKeyNextMatch,
+	"N":         handleKeyPrevMatch,
+	"esc":       handleKeyEsc,
 	"backspace": handleKeyCollapseCurrent,
-	"h":     handleKeyCollapseCurrent,
-	"left":  handleKeyCollapseCurrent,
-	"d":     handleKeyHalfPageDown,
-	"ctrl+d": handleKeyHalfPageDown,
-	"u":     handleKeyHalfPageUp,
-	"ctrl+u": handleKeyHalfPageUp,
-	"g":     handleKeyG,
-	"G":     handleKeyGG,
-	"pgup":  handleKeyPgUp,
-	"pgdown": handleKeyPgDown,
-	"l":     handleKeyExpandCurrent,
-	"right": handleKeyExpandCurrent,
-	"a":     handleKeyApply,
-	"y":     handleKeyConfirmApply,
+	"h":         handleKeyCollapseCurrent,
+	"left":      handleKeyCollapseCurrent,
+	"d":         handleKeyHalfPageDown,
+	"ctrl+d":    handleKeyHalfPageDown,
+	"u":         handleKeyHalfPageUp,
+	"ctrl+u":    handleKeyHalfPageUp,
+	"ctrl+e":    handleKeyScrollLineDown,
+	"ctrl+y":    handleKeyScrollLineUp,
+	"+":         handleKeyIncreaseDiffContext,
+	"=":         handleKeyIncreaseDiffContext,
+	"-":         handleKeyDecreaseDiffContext,
+	"g":         handleKeyG,
+	"G":         handleKeyGG,
+	"pgup":      handleKeyPgUp,
+	"pgdown":    handleKeyPgDown,
+	"l":         handleKeyExpandCurrent,
+	"right":     handleKeyExpandCurrent,
+	"a":         handleKeyApply,
+	"y":         handleKeyConfirmApply,
 }
 
 func handleKeyUp(m Model) (Model, tea.Cmd, bool) {
+	if m.blockCursor >= 0 {
+		m.blockCursor--
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+		return m, nil, true
+	}
+
 	if m.cursor > 0 {
 		m.cursor--
+		if blocks := m.currentFoldBlocks(); m.expanded[m.currentResourceIndex()] && len(blocks) > 0 {
+			m.blockCursor = len(blocks) - 1
+		}
 		m.updateViewportContent()
 		m.ensureCursorVisible()
 	} else {
@@ -373,6 +420,7 @@ func handleKeyUp(m Model) (Model, tea.Cmd, bool) {
 func (m Model) handleSearchArrowUp() Model {
 	if m.cursor > 0 {
 		m.cursor--
+		m.blockCursor = -1
 		m.updateViewportContent()
 		m.ensureCursorVisible()
 	} else {
@@ -386,6 +434,7 @@ func (m Model) handleSearchArrowDown() Model {
 	displayed := m.displayedResourceIndices()
 	if m.cursor < len(displayed)-1 {
 		m.cursor++
+		m.blockCursor = -1
 		m.updateViewportContent()
 		m.ensureCursorVisible()
 	} else {
@@ -395,9 +444,17 @@ func (m Model) handleSearchArrowDown() Model {
 }
 
 func handleKeyDown(m Model) (Model, tea.Cmd, bool) {
+	if blocks := m.currentFoldBlocks(); m.expanded[m.currentResourceIndex()] && m.blockCursor < len(blocks)-1 {
+		m.blockCursor++
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+		return m, nil, true
+	}
+
 	filtered := m.displayedResourceIndices()
 	if m.cursor < len(filtered)-1 {
 		m.cursor++
+		m.blockCursor = -1
 		m.updateViewportContent()
 		m.ensureCursorVisible()
 	} else {
@@ -407,10 +464,17 @@ func handleKeyDown(m Model) (Model, tea.Cmd, bool) {
 }
 
 func handleKeyEnter(m Model) (Model, tea.Cmd, bool) {
+	if m.toggleCurrentFold() {
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+		return m, nil, true
+	}
+
 	filtered := m.displayedResourceIndices()
 	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
 		resourceIdx := filtered[m.cursor]
 		m.expanded[resourceIdx] = !m.expanded[resourceIdx]
+		m.blockCursor = -1
 	}
 	m.updateViewportContent()
 	m.scrollForExpanded()
@@ -418,12 +482,34 @@ func handleKeyEnter(m Model) (Model, tea.Cmd, bool) {
 }
 
 func handleKeyExpandAll(m Model) (Model, tea.Cmd, bool) {
+	if m.setCurrentScopeFoldsCollapsed(false) {
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+		return m, nil, true
+	}
+
 	m.expandAll()
 	return m, nil, true
 }
 
 func handleKeyCollapseAll(m Model) (Model, tea.Cmd, bool) {
+	if m.setCurrentScopeFoldsCollapsed(true) {
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+		return m, nil, true
+	}
+
 	m.collapseAll()
+	return m, nil, true
+}
+
+func handleKeyExpandEverything(m Model) (Model, tea.Cmd, bool) {
+	m.expandEverything()
+	return m, nil, true
+}
+
+func handleKeyCollapseEverything(m Model) (Model, tea.Cmd, bool) {
+	m.collapseEverything()
 	return m, nil, true
 }
 
@@ -476,9 +562,16 @@ func handleKeyEsc(m Model) (Model, tea.Cmd, bool) {
 }
 
 func handleKeyCollapseCurrent(m Model) (Model, tea.Cmd, bool) {
+	if m.setCurrentFoldCollapsed(true) {
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+		return m, nil, true
+	}
+
 	filtered := m.displayedResourceIndices()
 	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
 		m.expanded[filtered[m.cursor]] = false
+		m.blockCursor = -1
 	}
 	m.updateViewportContent()
 	m.ensureCursorVisible()
@@ -492,6 +585,34 @@ func handleKeyHalfPageDown(m Model) (Model, tea.Cmd, bool) {
 
 func handleKeyHalfPageUp(m Model) (Model, tea.Cmd, bool) {
 	m.scrollHalfPageUp()
+	return m, nil, true
+}
+
+func handleKeyScrollLineDown(m Model) (Model, tea.Cmd, bool) {
+	m.viewport.SetYOffset(m.viewport.YOffset + 1)
+	return m, nil, true
+}
+
+func handleKeyScrollLineUp(m Model) (Model, tea.Cmd, bool) {
+	newOffset := m.viewport.YOffset - 1
+	if newOffset < 0 {
+		newOffset = 0
+	}
+	m.viewport.SetYOffset(newOffset)
+	return m, nil, true
+}
+
+func handleKeyIncreaseDiffContext(m Model) (Model, tea.Cmd, bool) {
+	m.diffContext = clampDiffContext(m.diffContextSize() + diffContextStep)
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+	return m, nil, true
+}
+
+func handleKeyDecreaseDiffContext(m Model) (Model, tea.Cmd, bool) {
+	m.diffContext = clampDiffContext(m.diffContextSize() - diffContextStep)
+	m.updateViewportContent()
+	m.ensureCursorVisible()
 	return m, nil, true
 }
 
@@ -517,6 +638,12 @@ func handleKeyPgDown(m Model) (Model, tea.Cmd, bool) {
 }
 
 func handleKeyExpandCurrent(m Model) (Model, tea.Cmd, bool) {
+	if m.setCurrentFoldCollapsed(false) {
+		m.updateViewportContent()
+		m.ensureCursorVisible()
+		return m, nil, true
+	}
+
 	filtered := m.displayedResourceIndices()
 	if len(filtered) > 0 && m.cursor >= 0 && m.cursor < len(filtered) {
 		m.expanded[filtered[m.cursor]] = true
@@ -667,8 +794,98 @@ func (m *Model) clampCursorAndRefreshSearch() {
 			m.cursor = 0
 		}
 	}
+	m.blockCursor = -1
 	if m.searchQuery != "" {
 		m.performSearch()
+	}
+}
+
+func (m Model) currentResourceIndex() int {
+	displayed := m.displayedResourceIndices()
+	if len(displayed) == 0 || m.cursor < 0 || m.cursor >= len(displayed) {
+		return -1
+	}
+	return displayed[m.cursor]
+}
+
+func (m Model) currentFoldBlocks() []foldBlock {
+	resourceIdx := m.currentResourceIndex()
+	if resourceIdx < 0 || resourceIdx >= len(m.plan.Resources) {
+		return nil
+	}
+	r := m.plan.Resources[resourceIdx]
+	if len(r.RawLines) <= 1 {
+		return nil
+	}
+	return m.visibleFoldBlocks(findFoldBlocks(r, r.RawLines[1:]))
+}
+
+func (m *Model) currentFoldBlock() (foldBlock, bool) {
+	blocks := m.currentFoldBlocks()
+	if m.blockCursor < 0 || m.blockCursor >= len(blocks) {
+		return foldBlock{}, false
+	}
+	return blocks[m.blockCursor], true
+}
+
+func (m *Model) toggleCurrentFold() bool {
+	block, ok := m.currentFoldBlock()
+	if !ok {
+		return false
+	}
+	m.foldedBlocks[block.Key] = !m.isFoldCollapsed(block)
+	return true
+}
+
+func (m *Model) setCurrentFoldCollapsed(collapsed bool) bool {
+	block, ok := m.currentFoldBlock()
+	if !ok {
+		return false
+	}
+	m.foldedBlocks[block.Key] = collapsed
+	return true
+}
+
+func (m *Model) setCurrentScopeFoldsCollapsed(collapsed bool) bool {
+	resourceIdx := m.currentResourceIndex()
+	if resourceIdx < 0 || resourceIdx >= len(m.plan.Resources) || !m.expanded[resourceIdx] {
+		return false
+	}
+
+	blocks := findFoldBlocks(m.plan.Resources[resourceIdx], m.plan.Resources[resourceIdx].RawLines[1:])
+	if len(blocks) == 0 {
+		return false
+	}
+
+	if current, ok := m.currentFoldBlock(); ok {
+		changed := false
+		for _, block := range blocks {
+			if block.Start >= current.Start && block.End <= current.End {
+				m.foldedBlocks[block.Key] = collapsed
+				changed = true
+			}
+		}
+		return changed
+	}
+
+	for _, block := range blocks {
+		m.foldedBlocks[block.Key] = collapsed
+	}
+	return true
+}
+
+func (m *Model) setDisplayedFoldsCollapsed(collapsed bool) {
+	for _, resourceIdx := range m.displayedResourceIndices() {
+		if resourceIdx < 0 || resourceIdx >= len(m.plan.Resources) {
+			continue
+		}
+		r := m.plan.Resources[resourceIdx]
+		if len(r.RawLines) <= 1 {
+			continue
+		}
+		for _, block := range findFoldBlocks(r, r.RawLines[1:]) {
+			m.foldedBlocks[block.Key] = collapsed
+		}
 	}
 }
 
@@ -686,6 +903,29 @@ func (m *Model) collapseAll() {
 	for _, idx := range m.displayedResourceIndices() {
 		m.expanded[idx] = false
 	}
+	m.blockCursor = -1
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+}
+
+// expandEverything expands all visible resources and their nested fold blocks.
+func (m *Model) expandEverything() {
+	for _, idx := range m.displayedResourceIndices() {
+		m.expanded[idx] = true
+	}
+	m.setDisplayedFoldsCollapsed(false)
+	m.blockCursor = -1
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+}
+
+// collapseEverything collapses all visible resources and their nested fold blocks.
+func (m *Model) collapseEverything() {
+	for _, idx := range m.displayedResourceIndices() {
+		m.expanded[idx] = false
+	}
+	m.setDisplayedFoldsCollapsed(true)
+	m.blockCursor = -1
 	m.updateViewportContent()
 	m.ensureCursorVisible()
 }
@@ -818,6 +1058,7 @@ func (m *Model) performSearch() {
 	if len(m.searchMatches) > 0 {
 		m.cursor = 0 // first item in filtered display
 		m.currentMatch = 0
+		m.blockCursor = -1
 	}
 }
 
@@ -838,7 +1079,10 @@ func (m *Model) ensureCursorVisible() {
 		return
 	}
 
-	lineNum := m.resourceLineStarts[m.cursor]
+	lineNum := m.selectedLineStart
+	if lineNum < 0 {
+		lineNum = m.resourceLineStarts[m.cursor]
+	}
 
 	topLine := m.viewport.YOffset
 	bottomLine := topLine + m.viewport.Height - 1
@@ -903,6 +1147,7 @@ func (m *Model) renderResources() string {
 		return b.String()
 	}
 
+	m.selectedLineStart = 0
 	for displayIdx, resourceIdx := range displayed {
 		m.resourceLineStarts[displayIdx] = lineCount
 		r := m.plan.Resources[resourceIdx]
@@ -910,6 +1155,9 @@ func (m *Model) renderResources() string {
 		isSelected := displayIdx == m.cursor
 		isExpanded := m.expanded[resourceIdx]
 		isMatch := m.searchQuery != "" // when filtering, all displayed items match
+		if isSelected && m.blockCursor < 0 {
+			m.selectedLineStart = lineCount
+		}
 
 		if isSelected {
 			line := m.renderSelectedResourceLine(r, isExpanded, isMatch)
@@ -922,10 +1170,9 @@ func (m *Model) renderResources() string {
 		lineCount++
 
 		if isExpanded && len(r.RawLines) > 1 {
-			before := b.Len()
-			m.renderExpandedContent(&b, r.RawLines[1:], r.Action)
+			m.renderExpandedContent(&b, r, isSelected && m.blockCursor >= 0, &lineCount)
 			b.WriteString("\n")
-			lineCount += strings.Count(b.String()[before:], "\n")
+			lineCount++
 		}
 	}
 
@@ -945,30 +1192,452 @@ func (m *Model) renderResources() string {
 	return b.String()
 }
 
-// renderExpandedContent renders the expanded lines for a resource, applying
-// word wrapping, userdata decoding, and YAML/heredoc diff detection.
-func (m Model) renderExpandedContent(b *strings.Builder, lines []string, action parser.Action) {
-	maxWidth := m.viewport.Width
+const defaultCollapsedFoldLines = 30
 
+type foldBlock struct {
+	Start          int
+	End            int
+	Key            string
+	LineCount      int
+	Heredoc        bool
+	HeredocPair    bool
+	OldEnd         int
+	AddStart       int
+	OldLineCount   int
+	NewLineCount   int
+	HeredocEndMark string
+}
+
+func findFoldBlocks(r parser.Resource, lines []string) []foldBlock {
+	var blocks []foldBlock
 	for idx := 0; idx < len(lines); idx++ {
-		line := lines[idx]
-
-		if decoded, ok := m.tryRenderUserdata(line, action, maxWidth); ok {
-			b.WriteString(decoded)
-			b.WriteString("\n")
+		if idx == 0 && isResourceDeclarationLine(lines[idx]) {
 			continue
 		}
 
-		if consumed, rendered := m.tryRenderHeredocDiff(lines, idx, action, maxWidth); consumed > 0 {
+		if block, ok := findHeredocPairFold(r, lines, idx); ok {
+			blocks = append(blocks, block)
+			idx = block.End - 1
+			continue
+		}
+
+		if marker := parseHeredocMarkerFromLine(lines[idx]); marker != "" {
+			end := findHeredocBlockEnd(lines, idx+1, marker)
+			if end > idx+1 {
+				blocks = append(blocks, newFoldBlock(r, lines, idx, end, true))
+				idx = end - 1
+			}
+			continue
+		}
+
+		if !isFoldableStructureStart(lines[idx]) {
+			continue
+		}
+		end := findBalancedStructureBlockEnd(lines, idx)
+		if end > idx+1 {
+			blocks = append(blocks, newFoldBlock(r, lines, idx, end, false))
+		}
+	}
+	return blocks
+}
+
+func findHeredocPairFold(r parser.Resource, lines []string, idx int) (foldBlock, bool) {
+	if idx >= len(lines) {
+		return foldBlock{}, false
+	}
+
+	trimmed := strings.TrimLeft(lines[idx], " \t")
+	if !strings.HasPrefix(trimmed, "- ") || !isHeredocMarker(trimmed[2:]) {
+		return foldBlock{}, false
+	}
+
+	endMarker := parseHeredocEnd(trimmed[2:])
+	if endMarker == "" {
+		return foldBlock{}, false
+	}
+
+	oldEnd := findHeredocBlockEnd(lines, idx+1, endMarker)
+	if oldEnd < 0 {
+		return foldBlock{}, false
+	}
+
+	addStart := findAddHeredocStart(lines, oldEnd)
+	if addStart < 0 {
+		return foldBlock{}, false
+	}
+
+	newEnd := findHeredocBlockEnd(lines, addStart+1, endMarker)
+	if newEnd < 0 {
+		return foldBlock{}, false
+	}
+
+	block := newFoldBlock(r, lines, idx, newEnd, false)
+	block.HeredocPair = true
+	block.OldEnd = oldEnd
+	block.AddStart = addStart
+	block.OldLineCount = oldEnd - idx - 2
+	block.NewLineCount = newEnd - addStart - 2
+	block.HeredocEndMark = endMarker
+	if block.OldLineCount < 0 {
+		block.OldLineCount = 0
+	}
+	if block.NewLineCount < 0 {
+		block.NewLineCount = 0
+	}
+	block.Key = fmt.Sprintf("%s:%d:heredoc-diff:%s", r.Address, idx, endMarker)
+	return block, true
+}
+
+func (m *Model) visibleFoldBlocks(blocks []foldBlock) []foldBlock {
+	visible := make([]foldBlock, 0, len(blocks))
+	var ancestors []foldBlock
+
+	for _, block := range blocks {
+		for len(ancestors) > 0 && block.Start >= ancestors[len(ancestors)-1].End {
+			ancestors = ancestors[:len(ancestors)-1]
+		}
+
+		hidden := false
+		for _, ancestor := range ancestors {
+			if m.isFoldCollapsed(ancestor) {
+				hidden = true
+				break
+			}
+		}
+		if !hidden {
+			visible = append(visible, block)
+		}
+
+		ancestors = append(ancestors, block)
+	}
+
+	return visible
+}
+
+func newFoldBlock(r parser.Resource, lines []string, start, end int, heredoc bool) foldBlock {
+	key := fmt.Sprintf("%s:%d:%s", r.Address, start, strings.TrimSpace(lines[start]))
+	lineCount := end - start - 1
+	if lineCount < 0 {
+		lineCount = 0
+	}
+	return foldBlock{Start: start, End: end, Key: key, LineCount: lineCount, Heredoc: heredoc}
+}
+
+func isResourceDeclarationLine(line string) bool {
+	content := strings.TrimSpace(stripDiffPrefix(strings.TrimLeft(line, " \t")))
+	return strings.HasPrefix(content, "resource ") || strings.HasPrefix(content, "data ")
+}
+
+func isFoldableStructureStart(line string) bool {
+	content := strings.TrimSpace(stripDiffPrefix(strings.TrimLeft(line, " \t")))
+	if content == "{" || content == "[" || content == "}" || content == "]" {
+		return false
+	}
+	return strings.HasSuffix(content, "{") || strings.HasSuffix(content, "[")
+}
+
+func stripDiffPrefix(s string) string {
+	if hasDiffPrefix(s) {
+		return s[2:]
+	}
+	return s
+}
+
+func (m *Model) isFoldCollapsed(block foldBlock) bool {
+	if collapsed, ok := m.foldedBlocks[block.Key]; ok {
+		return collapsed
+	}
+	return block.LineCount >= defaultCollapsedFoldLines
+}
+
+func (m Model) renderFoldHeader(line string, action parser.Action, block foldBlock, collapsed, selected bool, maxWidth int) string {
+	indicator := expandedIndicator
+	if collapsed {
+		indicator = collapsedIndicator
+	}
+
+	rendered := m.wrapAndColorize(line, action, maxWidth)
+	indent := extractIndent(line)
+	content := strings.TrimPrefix(rendered, indent)
+	if block.HeredocPair {
+		content = updateSymbol + " " + mutedColor.Render(fmt.Sprintf("heredoc diff <<-%s", block.HeredocEndMark))
+	}
+	result := indent + indicator + " " + content
+	if block.HeredocPair {
+		result += mutedColor.Render(fmt.Sprintf(" (%d → %d lines)", block.OldLineCount, block.NewLineCount))
+	} else if collapsed {
+		result += mutedColor.Render(fmt.Sprintf(" ... (%d lines)", block.LineCount))
+	}
+	if !selected {
+		return result
+	}
+
+	targetWidth := m.width - 4
+	if targetWidth <= 0 {
+		targetWidth = maxWidth
+	}
+	if targetWidth > 0 && utf8.RuneCountInString(stripANSI(result)) < targetWidth {
+		result += strings.Repeat(" ", targetWidth-utf8.RuneCountInString(stripANSI(result)))
+	}
+	return lipgloss.NewStyle().Background(selectedBg).Foreground(textColor).Render(result)
+}
+
+func renderExpandedHeredocLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+
+	contentLines := lines[:len(lines)-1]
+	baseIndent := heredocContentBaseIndent(contentLines)
+	var b strings.Builder
+	for _, contentLine := range contentLines {
+		b.WriteString(colorizeHeredocContentLine(contentLine, baseIndent))
+		b.WriteString("\n")
+	}
+	b.WriteString(lines[len(lines)-1])
+	b.WriteString("\n")
+	return b.String()
+}
+
+func renderHeredocPairFoldDiff(lines []string, block foldBlock, maxWidth int, contextSize int) string {
+	oldContent := extractHeredocContent(lines[block.Start+1 : block.OldEnd-1])
+	newContent := extractHeredocContent(lines[block.AddStart+1 : block.End-1])
+
+	diff := ComputeDiff(oldContent, newContent)
+	contextDiff := ContextDiff(diff, contextSize)
+	if contextDiff == nil {
+		return ""
+	}
+
+	baseIndent := extractIndent(lines[block.Start])
+	var b strings.Builder
+	b.WriteString(baseIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ heredoc diff ┄┄┄"))
+	b.WriteString("\n")
+	renderDiffLines(&b, contextDiff, baseIndent, maxWidth)
+	b.WriteString(baseIndent)
+	b.WriteString(mutedColor.Render("┄┄┄ end heredoc diff ┄┄┄"))
+	b.WriteString("\n")
+	return b.String()
+}
+
+// renderExpandedContent renders the expanded lines for a resource, applying
+// word wrapping, userdata decoding, YAML/heredoc diff detection, and generic
+// collapsible folds for multiline attributes and nested blocks.
+func (m *Model) renderExpandedContent(b *strings.Builder, r parser.Resource, selected bool, lineCount *int) {
+	maxWidth := m.viewport.Width
+	lines := r.RawLines[1:]
+	folds := findFoldBlocks(r, lines)
+	foldsByStart := make(map[int]foldBlock, len(folds))
+	for _, block := range folds {
+		foldsByStart[block.Start] = block
+	}
+
+	foldIdx := 0
+	for idx := 0; idx < len(lines); idx++ {
+		line := lines[idx]
+
+		if decoded, ok := m.tryRenderUserdata(line, r.Action, maxWidth); ok {
+			b.WriteString(decoded)
+			b.WriteString("\n")
+			*lineCount += strings.Count(decoded, "\n") + 1
+			continue
+		}
+
+		if block, ok := foldsByStart[idx]; ok {
+			blockSelected := selected && foldIdx == m.blockCursor
+			if blockSelected {
+				m.selectedLineStart = *lineCount
+			}
+			collapsed := m.isFoldCollapsed(block)
+			b.WriteString(m.renderFoldHeader(line, r.Action, block, collapsed, blockSelected, maxWidth))
+			b.WriteString("\n")
+			*lineCount++
+			foldIdx++
+
+			if collapsed {
+				idx = block.End - 1
+				continue
+			}
+			if block.HeredocPair {
+				rendered := renderHeredocPairFoldDiff(lines, block, maxWidth, m.diffContextSize())
+				b.WriteString(rendered)
+				*lineCount += strings.Count(rendered, "\n")
+				idx = block.End - 1
+				continue
+			}
+			if block.Heredoc {
+				rendered := renderExpandedHeredocLines(lines[idx+1 : block.End])
+				b.WriteString(rendered)
+				*lineCount += strings.Count(rendered, "\n")
+				idx = block.End - 1
+				continue
+			}
+			continue
+		}
+
+		if consumed, rendered := m.tryRenderHeredocDiff(lines, idx, r.Action, maxWidth); consumed > 0 {
 			b.WriteString(rendered)
+			b.WriteString("\n")
+			*lineCount += strings.Count(rendered, "\n") + 1
 			idx += consumed - 1
 			continue
 		}
 
-		coloredLine := m.wrapAndColorize(line, action, maxWidth)
+		if consumed, rendered := m.tryRenderHeredocBlock(lines, idx, r.Action, maxWidth); consumed > 0 {
+			b.WriteString(rendered)
+			*lineCount += strings.Count(rendered, "\n")
+			idx += consumed - 1
+			continue
+		}
+
+		coloredLine := m.wrapAndColorize(line, r.Action, maxWidth)
 		b.WriteString(coloredLine)
 		b.WriteString("\n")
+		*lineCount++
 	}
+
+}
+
+func findBalancedStructureBlockEnd(lines []string, start int) int {
+	open, close, ok := foldDelimiters(lines[start])
+	if !ok {
+		return -1
+	}
+
+	depth := 0
+	for i := start; i < len(lines); i++ {
+		depth += strings.Count(lines[i], open) - strings.Count(lines[i], close)
+		if i > start && depth <= 0 {
+			return i + 1
+		}
+	}
+	return -1
+}
+
+func foldDelimiters(line string) (open, close string, ok bool) {
+	content := strings.TrimSpace(stripDiffPrefix(strings.TrimLeft(line, " \t")))
+	switch {
+	case strings.HasSuffix(content, "{"):
+		return "{", "}", true
+	case strings.HasSuffix(content, "["):
+		return "[", "]", true
+	default:
+		return "", "", false
+	}
+}
+
+func (m Model) tryRenderHeredocBlock(lines []string, idx int, action parser.Action, maxWidth int) (int, string) {
+	if idx >= len(lines) {
+		return 0, ""
+	}
+
+	endMarker := parseHeredocMarkerFromLine(lines[idx])
+	if endMarker == "" {
+		return 0, ""
+	}
+
+	end := findHeredocBlockEnd(lines, idx+1, endMarker)
+	if end < 0 {
+		return 0, ""
+	}
+
+	contentLines := lines[idx+1 : end-1]
+	baseIndent := heredocContentBaseIndent(contentLines)
+
+	var b strings.Builder
+	b.WriteString(m.wrapAndColorize(lines[idx], action, maxWidth))
+	b.WriteString("\n")
+	for _, contentLine := range contentLines {
+		b.WriteString(colorizeHeredocContentLine(contentLine, baseIndent))
+		b.WriteString("\n")
+	}
+	b.WriteString(lines[end-1])
+	b.WriteString("\n")
+	return end - idx, b.String()
+}
+
+func parseHeredocMarkerFromLine(line string) string {
+	trimmed := strings.TrimLeft(line, " \t")
+	if hasDiffPrefix(trimmed) {
+		trimmed = trimmed[2:]
+	}
+
+	idx := strings.Index(trimmed, "<<")
+	if idx < 0 {
+		return ""
+	}
+
+	marker := strings.TrimSpace(trimmed[idx:])
+	switch {
+	case strings.HasPrefix(marker, "<<-"):
+		marker = strings.TrimSpace(marker[3:])
+	case strings.HasPrefix(marker, "<<"):
+		marker = strings.TrimSpace(marker[2:])
+	default:
+		return ""
+	}
+
+	fields := strings.Fields(marker)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.TrimSuffix(fields[0], ",")
+}
+
+func hasDiffPrefix(s string) bool {
+	return len(s) >= 2 && s[1] == ' ' && (s[0] == '+' || s[0] == '-' || s[0] == '~')
+}
+
+func heredocContentBaseIndent(lines []string) int {
+	minAll := -1
+	minNonDiffLike := -1
+
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		trimmed := strings.TrimLeft(line, " \t")
+		indentLen := len(line) - len(trimmed)
+		if minAll < 0 || indentLen < minAll {
+			minAll = indentLen
+		}
+		if !hasDiffPrefix(trimmed) {
+			if minNonDiffLike < 0 || indentLen < minNonDiffLike {
+				minNonDiffLike = indentLen
+			}
+		}
+	}
+
+	if minNonDiffLike >= 0 {
+		return minNonDiffLike
+	}
+	return minAll
+}
+
+func colorizeHeredocContentLine(line string, baseIndent int) string {
+	trimmed := strings.TrimLeft(line, " \t")
+	if !hasDiffPrefix(trimmed) || baseIndent < 2 {
+		return line
+	}
+
+	indent := line[:len(line)-len(trimmed)]
+	if len(indent) != baseIndent-2 {
+		return line
+	}
+
+	prefix := trimmed[:1]
+	content := trimmed[2:]
+	switch prefix {
+	case "+":
+		prefix = lipgloss.NewStyle().Foreground(createColor).Render(prefix)
+	case "-":
+		prefix = lipgloss.NewStyle().Foreground(destroyColor).Render(prefix)
+	case "~":
+		prefix = lipgloss.NewStyle().Foreground(updateColor).Render(prefix)
+	}
+
+	return indent + prefix + " " + content
 }
 
 // wrapAndColorize wraps a raw HCL line to the viewport width and colorizes
@@ -1063,7 +1732,7 @@ func (m Model) renderUserdataDiff(oldB64, newB64, key, decodedIndent string, hea
 		oldLines := strings.Split(oldDecoded, "\n")
 		newLines := strings.Split(newDecoded, "\n")
 		diff := ComputeDiff(oldLines, newLines)
-		contextDiff := ContextDiff(diff, 3)
+		contextDiff := ContextDiff(diff, m.diffContextSize())
 		if contextDiff == nil {
 			b.WriteString(decodedIndent)
 			b.WriteString(mutedColor.Render("  (no changes in decoded content)"))
@@ -1196,11 +1865,22 @@ func parseHeredocEnd(s string) string {
 func findHeredocBlockEnd(lines []string, startIdx int, endMarker string) int {
 	for i := startIdx; i < len(lines); i++ {
 		lt := strings.TrimSpace(lines[i])
-		if lt == endMarker || lt == endMarker+"," {
+		if isHeredocEndLine(lt, endMarker) {
 			return i + 1
 		}
 	}
 	return -1
+}
+
+func isHeredocEndLine(trimmedLine, endMarker string) bool {
+	if trimmedLine == endMarker || trimmedLine == endMarker+"," {
+		return true
+	}
+	rest, ok := strings.CutPrefix(trimmedLine, endMarker)
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(rest, " -> ") || strings.HasPrefix(rest, ", -> ")
 }
 
 // findAddHeredocStart finds the "+ <<-EOT" line, skipping blank lines. Returns -1 if not found.
@@ -1248,7 +1928,7 @@ func (m Model) renderHeredocPairDiff(lines []string, idx int, maxWidth int) (int
 	}
 
 	diff := ComputeDiff(oldContent, newContent)
-	contextDiff := ContextDiff(diff, 3)
+	contextDiff := ContextDiff(diff, m.diffContextSize())
 	if contextDiff == nil {
 		return 0, ""
 	}
@@ -1306,7 +1986,7 @@ func (m Model) renderPrefixedBlockDiff(lines []string, idx int, action parser.Ac
 	}
 
 	diff := ComputeDiff(oldContent, newContent)
-	contextDiff := ContextDiff(diff, 3)
+	contextDiff := ContextDiff(diff, m.diffContextSize())
 	if contextDiff == nil {
 		return 0, ""
 	}
@@ -1816,18 +2496,42 @@ func (m Model) viewConfirmationPrompt() string {
 
 // viewHelpFooter returns the help footer text.
 func (m Model) viewHelpFooter() string {
+	maxWidth := m.width - 4
+	if maxWidth <= 0 {
+		maxWidth = m.viewport.Width
+	}
+
 	if m.applyMode {
 		if m.confirmApply {
 			return "y: confirm apply • any key: cancel"
 		}
 		applyHint := lipgloss.NewStyle().Foreground(createColor).Bold(true).Render("a: APPLY")
-		return fmt.Sprintf("%s • j/k/↑↓: navigate • e/c: all • /: search • f: filter • s: sort • q: quit", applyHint)
+		full := fmt.Sprintf("%s • j/k/↑↓: navigate • e/c: all • /: search • f: filter • s: sort • q: quit", applyHint)
+		if lipgloss.Width(full) <= maxWidth {
+			return full
+		}
+		return fmt.Sprintf("%s • j/k nav • e/c all • / search • q", applyHint)
 	}
-	help := "j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • d/u: scroll • e/c: all • gg/G: top/bottom • /: search • f: filter • s: sort • q: quit"
+
+	helpOptions := []string{
+		"j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • e/c: scope • E/C: all • +/-: diff context • Ctrl+E/Y: line scroll • d/u: page scroll • gg/G: top/bottom • /: search • f: filter • s: sort • q: quit",
+		"j/k: nav • l/h: fold • e/c: scope • E/C: all • +/-: diff ctx • Ctrl+E/Y: line • d/u: page • /: search • f/s • q",
+		"j/k nav • l/h fold • e/c scope • E/C all • +/- diff • Ctrl+E/Y scroll • / search • q",
+		"j/k nav • l/h fold • e/c • q",
+	}
+
 	if len(m.statusFilters) > 0 {
-		help += " • Esc: clear filter"
+		for i, help := range helpOptions {
+			helpOptions[i] = help + " • Esc clears filter"
+		}
 	}
-	return help
+
+	for _, help := range helpOptions {
+		if lipgloss.Width(help) <= maxWidth {
+			return help
+		}
+	}
+	return helpOptions[len(helpOptions)-1]
 }
 
 // viewUpdateNudge renders the update available nudge.

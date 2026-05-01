@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -108,6 +109,39 @@ Plan: 1 to add, 1 to change, 1 to destroy.
 	}
 }
 
+func TestParseOldFormatIgnoresHelmValuesCommentsThatLookLikeResources(t *testing.T) {
+	input := `
+~ module.tempo.helm_release.chart[0]
+    values: <<-EOT
+      rollout_operator:
+~ -- Enable rollout-operator. It will be updated
+        enabled: true
+      distributor:
+        enabled: true
+    EOT
+
+Plan: 0 to add, 1 to change, 0 to destroy.
+`
+
+	plan, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Failed to parse plan: %v", err)
+	}
+
+	if len(plan.Resources) != 1 {
+		t.Fatalf("Expected 1 resource, got %d: %#v", len(plan.Resources), plan.Resources)
+	}
+	if plan.Resources[0].Address != "module.tempo.helm_release.chart[0]" {
+		t.Fatalf("Expected helm_release resource address, got %q", plan.Resources[0].Address)
+	}
+	for _, rawLine := range plan.Resources[0].RawLines {
+		if strings.Contains(rawLine, "Enable rollout-operator") {
+			return
+		}
+	}
+	t.Fatal("Expected Helm values comment-like line to remain in the resource raw lines")
+}
+
 func TestParseReplace(t *testing.T) {
 	input := `
   # aws_instance.replaced must be replaced
@@ -131,6 +165,52 @@ Plan: 1 to add, 0 to change, 1 to destroy.
 	if plan.Resources[0].Action != ActionReplace {
 		t.Errorf("Expected action to be replace, got %s", plan.Resources[0].Action)
 	}
+}
+
+func TestParseNewFormatIgnoresHelmValuesCommentsThatLookLikeHeaders(t *testing.T) {
+	input := `
+Terraform will perform the following actions:
+
+  # module.tempo.helm_release.chart[0] will be updated in-place
+  ~ resource "helm_release" "chart" {
+      ~ values = [
+          - <<-EOT
+              rollout_operator:
+                # -- Enable rollout-operator. It must be enabled when using Zone Aware Replication.
+                enabled: true
+                image:
+                  repository: example.com/docker.io/grafana/rollout-operator
+            EOT,
+          + <<-EOT
+              rollout_operator:
+                # -- Enable rollout-operator. It must be enabled when using Zone Aware Replication.
+                enabled: true
+                image:
+                  repository: example.com/docker.io/grafana/rollout-operator
+            EOT,
+        ]
+    }
+
+Plan: 0 to add, 1 to change, 0 to destroy.
+`
+
+	plan, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Failed to parse plan: %v", err)
+	}
+
+	if len(plan.Resources) != 1 {
+		t.Fatalf("Expected 1 resource, got %d: %#v", len(plan.Resources), plan.Resources)
+	}
+	if plan.Resources[0].Address != "module.tempo.helm_release.chart[0]" {
+		t.Fatalf("Expected helm_release resource address, got %q", plan.Resources[0].Address)
+	}
+	for _, rawLine := range plan.Resources[0].RawLines {
+		if strings.Contains(rawLine, "Enable rollout-operator") {
+			return
+		}
+	}
+	t.Fatal("Expected Helm values comment to remain in the resource raw lines")
 }
 
 func TestParseOutputChanges(t *testing.T) {
