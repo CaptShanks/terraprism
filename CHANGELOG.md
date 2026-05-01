@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generic collapsible sub-blocks in expanded plan resources for large maps, lists, and heredocs.
 - Sub-object navigation in expanded resources: `j`/`k` can move into foldable blocks, and `Enter`/`Space`, `h`, and `l` toggle the selected block.
 - Scoped recursive fold controls: `e` and `c` expand or collapse all foldable content under the selected resource or sub-block.
+- Global fold controls: `E` and `C` expand or collapse all visible resources and nested foldable blocks.
 - Paired remove/add heredocs render as a single foldable diff section instead of separate old/new heredoc blocks.
 - Adjustable diff context controls: `+`/`=` show more unchanged context around diff hunks, and `-` shows less.
 - One-line viewport scrolling with `Ctrl+E` and `Ctrl+Y` for reviewing large expanded blocks without changing selection.

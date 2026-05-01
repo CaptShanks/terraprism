@@ -364,7 +364,9 @@ var normalKeyHandlers = map[string]normalKeyHandler{
 	"enter":     handleKeyEnter,
 	" ":         handleKeyEnter,
 	"e":         handleKeyExpandAll,
+	"E":         handleKeyExpandEverything,
 	"c":         handleKeyCollapseAll,
+	"C":         handleKeyCollapseEverything,
 	"f":         handleKeyFilter,
 	"s":         handleKeySort,
 	"/":         handleKeySearch,
@@ -498,6 +500,16 @@ func handleKeyCollapseAll(m Model) (Model, tea.Cmd, bool) {
 	}
 
 	m.collapseAll()
+	return m, nil, true
+}
+
+func handleKeyExpandEverything(m Model) (Model, tea.Cmd, bool) {
+	m.expandEverything()
+	return m, nil, true
+}
+
+func handleKeyCollapseEverything(m Model) (Model, tea.Cmd, bool) {
+	m.collapseEverything()
 	return m, nil, true
 }
 
@@ -862,6 +874,21 @@ func (m *Model) setCurrentScopeFoldsCollapsed(collapsed bool) bool {
 	return true
 }
 
+func (m *Model) setDisplayedFoldsCollapsed(collapsed bool) {
+	for _, resourceIdx := range m.displayedResourceIndices() {
+		if resourceIdx < 0 || resourceIdx >= len(m.plan.Resources) {
+			continue
+		}
+		r := m.plan.Resources[resourceIdx]
+		if len(r.RawLines) <= 1 {
+			continue
+		}
+		for _, block := range findFoldBlocks(r, r.RawLines[1:]) {
+			m.foldedBlocks[block.Key] = collapsed
+		}
+	}
+}
+
 // expandAll expands all visible (filtered/sorted) resources
 func (m *Model) expandAll() {
 	for _, idx := range m.displayedResourceIndices() {
@@ -876,6 +903,28 @@ func (m *Model) collapseAll() {
 	for _, idx := range m.displayedResourceIndices() {
 		m.expanded[idx] = false
 	}
+	m.blockCursor = -1
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+}
+
+// expandEverything expands all visible resources and their nested fold blocks.
+func (m *Model) expandEverything() {
+	for _, idx := range m.displayedResourceIndices() {
+		m.expanded[idx] = true
+	}
+	m.setDisplayedFoldsCollapsed(false)
+	m.blockCursor = -1
+	m.updateViewportContent()
+	m.ensureCursorVisible()
+}
+
+// collapseEverything collapses all visible resources and their nested fold blocks.
+func (m *Model) collapseEverything() {
+	for _, idx := range m.displayedResourceIndices() {
+		m.expanded[idx] = false
+	}
+	m.setDisplayedFoldsCollapsed(true)
 	m.blockCursor = -1
 	m.updateViewportContent()
 	m.ensureCursorVisible()
@@ -2465,9 +2514,9 @@ func (m Model) viewHelpFooter() string {
 	}
 
 	helpOptions := []string{
-		"j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • e/c: expand/collapse scope • +/-: diff context • Ctrl+E/Y: line scroll • d/u: page scroll • gg/G: top/bottom • /: search • f: filter • s: sort • q: quit",
-		"j/k: nav • l/h: fold • e/c: scope • +/-: diff ctx • Ctrl+E/Y: line • d/u: page • /: search • f/s • q",
-		"j/k nav • l/h fold • e/c scope • +/- diff • Ctrl+E/Y scroll • / search • q",
+		"j/k/↑↓: navigate • l/→: expand • h/←/⌫: collapse • e/c: scope • E/C: all • +/-: diff context • Ctrl+E/Y: line scroll • d/u: page scroll • gg/G: top/bottom • /: search • f: filter • s: sort • q: quit",
+		"j/k: nav • l/h: fold • e/c: scope • E/C: all • +/-: diff ctx • Ctrl+E/Y: line • d/u: page • /: search • f/s • q",
+		"j/k nav • l/h fold • e/c scope • E/C all • +/- diff • Ctrl+E/Y scroll • / search • q",
 		"j/k nav • l/h fold • e/c • q",
 	}
 

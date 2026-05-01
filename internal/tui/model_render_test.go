@@ -417,6 +417,67 @@ func TestSetCurrentScopeFoldsCollapsedSubBlockScope(t *testing.T) {
 	}
 }
 
+func TestExpandAndCollapseEverythingAffectsAllDisplayedResourcesAndFolds(t *testing.T) {
+	resources := []parser.Resource{
+		{
+			Address: "helm_release.chart",
+			Action:  parser.ActionUpdate,
+			RawLines: []string{
+				`  ~ resource "helm_release" "chart" {`,
+				`      ~ metadata = {`,
+				`          ~ values = {`,
+				`              nested = true`,
+				`            }`,
+				`        }`,
+			},
+		},
+		{
+			Address: "kubectl_manifest.vmagent",
+			Action:  parser.ActionUpdate,
+			RawLines: []string{
+				`  ~ resource "kubectl_manifest" "vmagent" {`,
+				`      ~ yaml_body_parsed = <<-EOT`,
+				`            spec:`,
+				`              replicas: 3`,
+				`        EOT`,
+			},
+		},
+	}
+	m := Model{
+		plan:         &parser.Plan{Resources: resources},
+		expanded:     map[int]bool{0: false, 1: false},
+		foldedBlocks: make(map[string]bool),
+		blockCursor:  1,
+	}
+
+	m.expandEverything()
+	for idx := range resources {
+		if !m.expanded[idx] {
+			t.Fatalf("expected resource %d to be expanded", idx)
+		}
+		for _, block := range findFoldBlocks(resources[idx], resources[idx].RawLines[1:]) {
+			if m.foldedBlocks[block.Key] {
+				t.Fatalf("expected fold %q to be expanded", block.Key)
+			}
+		}
+	}
+	if m.blockCursor != -1 {
+		t.Fatalf("expected block cursor to reset after global expand, got %d", m.blockCursor)
+	}
+
+	m.collapseEverything()
+	for idx := range resources {
+		if m.expanded[idx] {
+			t.Fatalf("expected resource %d to be collapsed", idx)
+		}
+		for _, block := range findFoldBlocks(resources[idx], resources[idx].RawLines[1:]) {
+			if !m.foldedBlocks[block.Key] {
+				t.Fatalf("expected fold %q to be collapsed", block.Key)
+			}
+		}
+	}
+}
+
 func TestViewHelpFooterUsesCompactTextForNarrowWidths(t *testing.T) {
 	m := Model{width: 72}
 	got := m.viewHelpFooter()
