@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  Collapsible resources • Filter & sort • Syntax-highlighted HCL • Vim-style navigation • Auto light/dark mode
+  Collapsible resources and sub-blocks • Filter & sort • Syntax-highlighted HCL • Vim-style navigation • Auto light/dark mode
 </p>
 
 ---
@@ -27,11 +27,11 @@
 ## Features
 
 - **Syntax-highlighted HCL** - Full color-coded display of your plan
-- **Collapsible resources** - Expand/collapse individual resources or all at once
+- **Collapsible resources and sub-blocks** - Expand/collapse resources, large maps, lists, and heredocs
 - **Status filter** - Filter resources by action (create, destroy, update, replace, read, etc.)
 - **Sort** - Sort by plan order, action, address, or resource type
 - **Search** - Find resources by name, type, or address (works with filters)
-- **Vim-style navigation** - j/k/gg/G/d/u and more
+- **Vim-style navigation** - j/k/gg/G/d/u plus line scrolling for large blocks
 - **Auto light/dark mode** - Detects your terminal background
 - **Format support** - Works with Terraform 0.11+ and OpenTofu
 - **Full-line selection** - Clear visual indicator of selected resource
@@ -132,21 +132,29 @@ terraform plan -no-color | terraprism -p
 ### Navigation
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Move to next resource |
-| `k` / `↑` | Move to previous resource |
+| `j` / `↓` | Move to next resource or foldable sub-block |
+| `k` / `↑` | Move to previous resource or foldable sub-block |
 | `gg` | Jump to first resource |
 | `G` | Jump to last resource |
 | `d` / `Ctrl+D` | Scroll half page down |
 | `u` / `Ctrl+U` | Scroll half page up |
+| `Ctrl+E` | Scroll one line down |
+| `Ctrl+Y` | Scroll one line up |
+| `+` / `=` | Show more unchanged context around diff hunks |
+| `-` | Show less unchanged context around diff hunks |
 
 ### Expand/Collapse
 | Key | Action |
 |-----|--------|
-| `Enter` / `Space` | Toggle current resource |
-| `l` / `→` | Expand current resource |
-| `h` / `←` / `⌫` | Collapse current resource |
-| `e` | Expand all resources |
-| `c` | Collapse all resources |
+| `Enter` / `Space` | Toggle current resource or foldable sub-block |
+| `l` / `→` | Expand current resource or foldable sub-block |
+| `h` / `←` / `⌫` | Collapse current resource or foldable sub-block |
+| `e` | Expand all resources, or all foldable sub-blocks in the current scope |
+| `c` | Collapse all resources, or all foldable sub-blocks in the current scope |
+
+Large maps, lists, and heredocs inside expanded resources become foldable sub-blocks. Large sub-blocks collapse by default; use `l`/`→` or `Enter`/`Space` to expand them, then `Ctrl+E`/`Ctrl+Y` to scroll through the expanded content without moving the selection. When a resource or sub-block is selected, `e` and `c` recursively expand or collapse the foldable content underneath that selection.
+
+Paired remove/add heredocs are shown as one foldable diff section so large values changes can be reviewed as a focused line diff. Use `+`/`=` and `-` to increase or decrease the unchanged context shown around each diff hunk.
 
 ### Search
 | Key | Action |
@@ -353,12 +361,12 @@ Large Terraform plans can be difficult to review:
 
 Terra-Prism solves these problems:
 
-- Collapsible sections for high-level overview
+- Collapsible sections and sub-blocks for high-level overview
 - Filter by status to focus on creates, destroys, updates, etc.
 - Sort by action, address, or type for organized review
 - Consistent syntax highlighting
 - Search to find specific resources (works with filters)
-- Vim-style navigation for efficiency
+- Vim-style navigation for resources, sub-blocks, and large expanded content
 - Auto-scrolling keeps selection visible
 
 ## Inspired By

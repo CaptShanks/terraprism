@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-01
+
+### Added
+
+- Generic collapsible sub-blocks in expanded plan resources for large maps, lists, and heredocs.
+- Sub-object navigation in expanded resources: `j`/`k` can move into foldable blocks, and `Enter`/`Space`, `h`, and `l` toggle the selected block.
+- Scoped recursive fold controls: `e` and `c` expand or collapse all foldable content under the selected resource or sub-block.
+- Paired remove/add heredocs render as a single foldable diff section instead of separate old/new heredoc blocks.
+- Adjustable diff context controls: `+`/`=` show more unchanged context around diff hunks, and `-` shows less.
+- One-line viewport scrolling with `Ctrl+E` and `Ctrl+Y` for reviewing large expanded blocks without changing selection.
+
+### Fixed
+
+- Preserve YAML indentation inside heredoc attributes such as `kubectl_manifest.yaml_body_parsed`, including nested Kubernetes lists.
+- Avoid hardcoded provider-specific hiding for noisy `helm_release.metadata` output by using generic collapsible blocks instead.
+
 ## [0.11.0] - 2026-02-25
 
 ### Added
@@ -151,7 +167,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove `borderColor`, fix deprecated viewport methods
 - CI: use Go 1.22 and add golangci config
 
-[Unreleased]: https://github.com/CaptShanks/terraprism/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/CaptShanks/terraprism/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/CaptShanks/terraprism/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/CaptShanks/terraprism/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/CaptShanks/terraprism/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/CaptShanks/terraprism/compare/v0.8.0...v0.9.0
