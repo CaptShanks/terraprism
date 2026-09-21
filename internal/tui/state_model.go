@@ -401,9 +401,9 @@ func (m StateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var sb strings.Builder
 		for _, addr := range m.detailAddresses {
 			if err, ok := msg.errors[addr]; ok {
-				sb.WriteString(fmt.Sprintf("# %s (error: %v)\n%s\n\n", addr, err, msg.results[addr]))
+				fmt.Fprintf(&sb, "# %s (error: %v)\n%s\n\n", addr, err, msg.results[addr])
 			} else {
-				sb.WriteString(fmt.Sprintf("# %s\n%s\n\n", addr, msg.results[addr]))
+				fmt.Fprintf(&sb, "# %s\n%s\n\n", addr, msg.results[addr])
 			}
 		}
 		m.detailContent = sb.String()

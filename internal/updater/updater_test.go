@@ -1,10 +1,12 @@
 package updater
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCurlFallbackMessage(t *testing.T) {
@@ -67,6 +69,59 @@ func TestUpdateCheckIntervalDays(t *testing.T) {
 func TestCheckLatestWithCache_NoPanic(t *testing.T) {
 	// Verify CheckLatestWithCache doesn't panic; may hit network
 	_, _, _ = CheckLatestWithCache("99.99.99", 7)
+}
+
+func writeUpdateCache(t *testing.T, cache updateCache) {
+	t.Helper()
+	path, err := cachePath()
+	if err != nil {
+		t.Fatalf("cachePath: %v", err)
+	}
+	data, err := json.Marshal(cache)
+	if err != nil {
+		t.Fatalf("marshal cache: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+}
+
+func TestCheckLatestWithCacheUsesCacheWhenVersionMatches(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	writeUpdateCache(t, updateCache{
+		LastCheckEpoch: time.Now().Unix(),
+		CurrentVersion: "1.2.3",
+		LatestVersion:  "9.9.9",
+		HasUpdate:      true,
+	})
+
+	latest, hasUpdate, err := CheckLatestWithCache("1.2.3", 7)
+	if err != nil {
+		t.Fatalf("expected cache hit without error, got: %v", err)
+	}
+	if latest != "9.9.9" || !hasUpdate {
+		t.Errorf("expected cached values (9.9.9, true), got (%q, %v)", latest, hasUpdate)
+	}
+}
+
+// A cache written for one currentVersion must not be replayed for a
+// different one -- otherwise bumping the local version (e.g. after a
+// rebuild) keeps showing a stale "update available" nudge for the rest
+// of the cache interval, since the cached HasUpdate was never true for
+// the new version to begin with.
+func TestCheckLatestWithCacheIgnoresCacheOnVersionMismatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	writeUpdateCache(t, updateCache{
+		LastCheckEpoch: time.Now().Unix(),
+		CurrentVersion: "1.2.3",
+		LatestVersion:  "9.9.9",
+		HasUpdate:      true,
+	})
+
+	latest, hasUpdate, _ := CheckLatestWithCache("4.5.6", 7)
+	if latest == "9.9.9" && hasUpdate {
+		t.Errorf("expected stale cache (written for version 1.2.3) to be ignored when checking version 4.5.6, got latest=%q hasUpdate=%v", latest, hasUpdate)
+	}
 }
 
 func TestCachePath(t *testing.T) {

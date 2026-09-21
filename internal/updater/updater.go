@@ -74,11 +74,16 @@ func normalizeVersion(s string) string {
 	return s
 }
 
-// updateCache holds cached update check results.
+// updateCache holds cached update check results. CurrentVersion records
+// which version the cached HasUpdate/LatestVersion were computed
+// against, so a cache written before a version bump (e.g. a local
+// rebuild with a new -X main.version) doesn't silently keep replaying a
+// stale answer for the rest of the interval.
 type updateCache struct {
-	LastCheckEpoch  int64  `json:"last_check_epoch"`
-	LatestVersion   string `json:"latest_version,omitempty"`
-	HasUpdate       bool   `json:"has_update"`
+	LastCheckEpoch int64  `json:"last_check_epoch"`
+	CurrentVersion string `json:"current_version,omitempty"`
+	LatestVersion  string `json:"latest_version,omitempty"`
+	HasUpdate      bool   `json:"has_update"`
 }
 
 // cachePath returns the path to the update check cache file.
@@ -114,7 +119,7 @@ func CheckLatestWithCache(currentVersion string, intervalDays int) (latestVersio
 		var cache updateCache
 		if json.Unmarshal(data, &cache) == nil {
 			now := time.Now().Unix()
-			if now-cache.LastCheckEpoch < intervalSec {
+			if cache.CurrentVersion == currentVersion && now-cache.LastCheckEpoch < intervalSec {
 				return cache.LatestVersion, cache.HasUpdate, nil
 			}
 		}
@@ -129,6 +134,7 @@ func CheckLatestWithCache(currentVersion string, intervalDays int) (latestVersio
 	// Write cache
 	cache := updateCache{
 		LastCheckEpoch: time.Now().Unix(),
+		CurrentVersion: currentVersion,
 		LatestVersion:  latest,
 		HasUpdate:      hasUpdate,
 	}

@@ -1,0 +1,144 @@
+{
+    "format_version": "1.2",
+    "terraform_version": "1.7.5",
+    "planned_values": {
+        "root_module": {
+            "resources": [
+                {
+                    "address": "null_resource.example",
+                    "mode": "managed",
+                    "type": "null_resource",
+                    "name": "example",
+                    "provider_name": "registry.terraform.io/hashicorp/null",
+                    "schema_version": 0,
+                    "values": {
+                        "triggers": {
+                            "environment": "staging",
+                            "values_yaml": "replicaCount: 2\nimage:\n  repository: nginx\n  tag: \"1.25\"\nresources:\n  limits:\n    cpu: 100m\n    memory: 128Mi\n"
+                        }
+                    },
+                    "sensitive_values": {
+                        "triggers": {}
+                    }
+                },
+                {
+                    "address": "random_id.example",
+                    "mode": "managed",
+                    "type": "random_id",
+                    "name": "example",
+                    "provider_name": "registry.terraform.io/hashicorp/random",
+                    "schema_version": 0,
+                    "values": {
+                        "byte_length": 4,
+                        "keepers": null,
+                        "prefix": null
+                    },
+                    "sensitive_values": {}
+                }
+            ]
+        }
+    },
+    "resource_changes": [
+        {
+            "address": "null_resource.example",
+            "mode": "managed",
+            "type": "null_resource",
+            "name": "example",
+            "provider_name": "registry.terraform.io/hashicorp/null",
+            "change": {
+                "actions": [
+                    "create"
+                ],
+                "before": null,
+                "after": {
+                    "triggers": {
+                        "environment": "staging",
+                        "values_yaml": "replicaCount: 2\nimage:\n  repository: nginx\n  tag: \"1.25\"\nresources:\n  limits:\n    cpu: 100m\n    memory: 128Mi\n"
+                    }
+                },
+                "after_unknown": {
+                    "id": true,
+                    "triggers": {}
+                },
+                "before_sensitive": false,
+                "after_sensitive": {
+                    "triggers": {}
+                }
+            }
+        },
+        {
+            "address": "random_id.example",
+            "mode": "managed",
+            "type": "random_id",
+            "name": "example",
+            "provider_name": "registry.terraform.io/hashicorp/random",
+            "change": {
+                "actions": [
+                    "create"
+                ],
+                "before": null,
+                "after": {
+                    "byte_length": 4,
+                    "keepers": null,
+                    "prefix": null
+                },
+                "after_unknown": {
+                    "b64_std": true,
+                    "b64_url": true,
+                    "dec": true,
+                    "hex": true,
+                    "id": true
+                },
+                "before_sensitive": false,
+                "after_sensitive": {}
+            }
+        }
+    ],
+    "configuration": {
+        "provider_config": {
+            "null": {
+                "name": "null",
+                "full_name": "registry.terraform.io/hashicorp/null"
+            },
+            "random": {
+                "name": "random",
+                "full_name": "registry.terraform.io/hashicorp/random"
+            }
+        },
+        "root_module": {
+            "resources": [
+                {
+                    "address": "null_resource.example",
+                    "mode": "managed",
+                    "type": "null_resource",
+                    "name": "example",
+                    "provider_config_key": "null",
+                    "expressions": {
+                        "triggers": {
+                            "constant_value": {
+                                "environment": "staging",
+                                "values_yaml": "replicaCount: 2\nimage:\n  repository: nginx\n  tag: \"1.25\"\nresources:\n  limits:\n    cpu: 100m\n    memory: 128Mi\n"
+                            }
+                        }
+                    },
+                    "schema_version": 0
+                },
+                {
+                    "address": "random_id.example",
+                    "mode": "managed",
+                    "type": "random_id",
+                    "name": "example",
+                    "provider_config_key": "random",
+                    "expressions": {
+                        "byte_length": {
+                            "constant_value": 4
+                        }
+                    },
+                    "schema_version": 0
+                }
+            ]
+        }
+    },
+    "timestamp": "2026-07-25T03:52:24Z",
+    "errored": false
+}
