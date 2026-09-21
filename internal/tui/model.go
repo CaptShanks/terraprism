@@ -984,7 +984,14 @@ func (m Model) RenderRow(row foldtree.Row, selected bool, width int, searchQuery
 
 	case rowMultilineHeader:
 		indent := strings.Repeat("  ", row.Depth)
-		return m.renderFoldHeader(indent, info.attr, info.keyed, row.Collapsed, selected, width, "<<EOT", multilineFoldSummary(info.attr))
+		opener := "<<EOT"
+		if info.attr.Sensitive && isJSONContainerAttr(info.attr) {
+			// Flags that the diff below is against a pretty-printed
+			// reformat, not the literal raw value -- relevant if someone
+			// copies it out (whitespace/key order can differ).
+			opener = "<<EOT (JSON, pretty-printed)"
+		}
+		return m.renderFoldHeader(indent, info.attr, info.keyed, row.Collapsed, selected, width, opener, multilineFoldSummary(info.attr))
 
 	default: // leaf, sensitive, userdata, multilineBody, closingBracket, eot, unchangedNote
 		if selected {
@@ -1043,7 +1050,10 @@ func isContainerAttr(a tfplan.Attribute) bool {
 // container, or open+close plus diffed line count for a multi-line
 // string — used to decide the default collapsed/expanded state.
 func countRenderedLines(a tfplan.Attribute) int {
-	if isMultilineStringAttr(a) {
+	// sensitiveRevealsAsHeredoc alone would miss a non-sensitive
+	// multiline string (it's always false unless a.Sensitive), so both
+	// checks stay explicit rather than one subsuming the other.
+	if isMultilineStringAttr(a) || sensitiveRevealsAsHeredoc(a) {
 		return multilineLineEstimate(a) + 2
 	}
 	if !isContainerAttr(a) {
@@ -1059,9 +1069,17 @@ func countRenderedLines(a tfplan.Attribute) int {
 // multilineLineEstimate returns the larger of the old/new value's line
 // count, for sizing the default-collapse heuristic and the collapsed
 // "... (N lines)" summary — doesn't need to be exact, just representative.
+// For a sensitive attribute, a JSON-shaped value is pretty-printed first
+// (see renderMultilineStringBody), so the estimate has to match that or
+// the collapsed summary would report the wrong line count.
 func multilineLineEstimate(a tfplan.Attribute) int {
 	count := func(v any) int {
 		s, ok := v.(string)
+		if a.Sensitive {
+			if pretty, ok2 := TryPrettyPrintJSON(v); ok2 {
+				s, ok = pretty, true
+			}
+		}
 		if !ok {
 			return 0
 		}
@@ -1253,8 +1271,27 @@ func (m Model) renderMultilineStringBody(attr tfplan.Attribute, indent string, m
 		return b.String()
 	}
 
-	oldStr, _ := attr.Old.(string)
-	newStr, _ := attr.New.(string)
+	// A sensitive value's real Old/New is pretty-printed first when it's
+	// JSON-shaped -- a minified JSON blob (or a whole-subtree-sensitive
+	// container's raw map/list) has no line structure of its own to
+	// diff, so without this it would still render as one unreadable
+	// line even after being routed here. Scoped to Sensitive so an
+	// ordinary multi-line string's existing rendering (already
+	// literal-newline text, possibly independently valid JSON) is never
+	// affected -- re-marshaling would risk reordering its keys.
+	var oldStr, newStr string
+	if attr.Sensitive {
+		var ok bool
+		if oldStr, ok = TryPrettyPrintJSON(attr.Old); !ok {
+			oldStr, _ = attr.Old.(string)
+		}
+		if newStr, ok = TryPrettyPrintJSON(attr.New); !ok {
+			newStr, _ = attr.New.(string)
+		}
+	} else {
+		oldStr, _ = attr.Old.(string)
+		newStr, _ = attr.New.(string)
+	}
 
 	switch attr.Action {
 	case tfplan.ActionCreate:

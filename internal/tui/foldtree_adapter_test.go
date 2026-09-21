@@ -415,6 +415,91 @@ func TestSensitiveMultilineValueStaysRedactedUntilRevealed(t *testing.T) {
 	}
 }
 
+// A minified (no literal newlines) JSON secret -- e.g. a big config
+// blob stored as a JSON-encoded string -- has no line structure of its
+// own to trip isMultilineStringAttr, so without pretty-printing it would
+// still render as one unreadable line even once revealed. Once revealed,
+// it must be pretty-printed and diffed line by line like any other
+// multi-line value, not left flat.
+func TestSensitiveMinifiedJSONValueRevealsAsHeredocDiff(t *testing.T) {
+	oldJSON := `{"a":1,"b":"old"}`
+	newJSON := `{"a":1,"b":"new"}`
+	r := tfplan.Resource{
+		Address: "kubectl_manifest.config",
+		Attributes: withPaths([]tfplan.Attribute{
+			{Name: "config_json", Kind: tfplan.KindString, Action: tfplan.ActionUpdate, Sensitive: true, Old: oldJSON, New: newJSON},
+		}, ""),
+	}
+	m := testModelForAdapter(120, 40, defaultDiffContext)
+
+	node := m.buildResourceNode(r)
+	info := payloadOf(t, node.Children[0])
+	if info.kind != rowSensitive {
+		t.Fatalf("kind = %v, want rowSensitive while redacted", info.kind)
+	}
+	text := stripRenderANSI(info.text)
+	if strings.Contains(text, "old") || strings.Contains(text, "new") {
+		t.Fatalf("redacted text leaked JSON secret content: %q", text)
+	}
+
+	m.revealSensitive = true
+	node = m.buildResourceNode(r)
+	info = payloadOf(t, node.Children[0])
+	if info.kind != rowMultilineHeader {
+		t.Fatalf("kind = %v, want rowMultilineHeader once revealed (minified JSON must still get the heredoc diff)", info.kind)
+	}
+	if len(node.Children[0].Children) != 2 {
+		t.Fatalf("got %d multiline children, want 2 (body + EOT)", len(node.Children[0].Children))
+	}
+	body := stripRenderANSI(payloadOf(t, node.Children[0].Children[0]).text)
+	for _, want := range []string{`"a": 1`, `"b": "old"`, `"b": "new"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("revealed body = %q, want it to contain pretty-printed line %q", body, want)
+		}
+	}
+
+	// The "(JSON)" opener label is decided in RenderRow (based on
+	// isJSONContainerAttr), not inside renderFoldHeader itself -- go
+	// through RenderRow directly rather than hand-picking the opener, so
+	// this actually exercises that decision.
+	row := foldtree.Row{Payload: rowInfo{kind: rowMultilineHeader, attr: info.attr, keyed: info.keyed}}
+	header := stripRenderANSI(m.RenderRow(row, false, 120, ""))
+	if !strings.Contains(header, "JSON") {
+		t.Fatalf("revealed header = %q, want a JSON marker noting the diff is against a pretty-printed reformat", header)
+	}
+}
+
+// A whole-subtree-sensitive container (Kind Map/List, e.g. a
+// credentials block) carries its real value as a raw
+// map[string]interface{}/[]interface{} on Old/New, not a string (see
+// tfplan.buildAttribute) -- TryPrettyPrintJSON must marshal it directly
+// without a parse step, and it must get the same heredoc treatment as a
+// JSON-encoded string once revealed.
+func TestSensitiveWholeSubtreeContainerRevealsAsHeredocDiff(t *testing.T) {
+	oldCreds := map[string]interface{}{"user": "old-user", "pass": "old-pass"}
+	newCreds := map[string]interface{}{"user": "new-user", "pass": "new-pass"}
+	r := tfplan.Resource{
+		Address: "aws_db_instance.main",
+		Attributes: withPaths([]tfplan.Attribute{
+			{Name: "credentials", Kind: tfplan.KindMap, Action: tfplan.ActionUpdate, Sensitive: true, Old: oldCreds, New: newCreds},
+		}, ""),
+	}
+	m := testModelForAdapter(120, 40, defaultDiffContext)
+	m.revealSensitive = true
+
+	node := m.buildResourceNode(r)
+	info := payloadOf(t, node.Children[0])
+	if info.kind != rowMultilineHeader {
+		t.Fatalf("kind = %v, want rowMultilineHeader once revealed", info.kind)
+	}
+	body := stripRenderANSI(payloadOf(t, node.Children[0].Children[0]).text)
+	for _, want := range []string{`"user": "old-user"`, `"user": "new-user"`, `"pass": "old-pass"`, `"pass": "new-pass"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("revealed body = %q, want it to contain pretty-printed line %q", body, want)
+		}
+	}
+}
+
 // Synthetic IDs must be deterministic across rebuilds of the identical
 // data, since foldtree's cursor-preservation-by-ID depends on it -- if
 // the cursor happens to sit on a closing bracket / EOT / noop-note row
