@@ -1,8 +1,6 @@
-package tui
+package foldtree
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestFuzzyMatch(t *testing.T) {
 	tests := []struct {
@@ -24,9 +22,9 @@ func TestFuzzyMatch(t *testing.T) {
 		{"abc", "", true},
 	}
 	for _, tt := range tests {
-		got := fuzzyMatch(tt.text, tt.query)
+		got := FuzzyMatch(tt.text, tt.query)
 		if got != tt.expect {
-			t.Errorf("fuzzyMatch(%q, %q) = %v, want %v", tt.text, tt.query, got, tt.expect)
+			t.Errorf("FuzzyMatch(%q, %q) = %v, want %v", tt.text, tt.query, got, tt.expect)
 		}
 	}
 }

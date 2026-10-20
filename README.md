@@ -26,6 +26,7 @@
 
 ## Features
 
+- **Live output streaming** - The TUI opens immediately for `plan`/`apply`/`destroy`; a hideable pane streams terraform/tofu's real output live, with its own search, word wrap, and horizontal scroll
 - **Syntax-highlighted HCL** - Full color-coded display of your plan
 - **Collapsible resources and sub-blocks** - Expand/collapse resources, large maps, lists, and heredocs
 - **Status filter** - Filter resources by action (create, destroy, update, replace, read, etc.)
@@ -107,24 +108,28 @@ All three subcommands open the same unified TUI. Use **Space** to select items, 
 
 ### Pipe Mode
 
-Pipe plan output for viewing:
+Terraprism reads the structured JSON plan format (`terraform show -json`), not
+plan text — it needs a saved plan file to get JSON output from:
 
 ```bash
-terraform plan -no-color | terraprism
-tofu plan -no-color | terraprism
+terraform plan -out=plan.bin && terraform show -json plan.bin | terraprism
+tofu plan -out=plan.bin && tofu show -json plan.bin | terraprism
 ```
+
+If you pipe plain `terraform plan` text by mistake, terraprism will tell you
+so and print the command above instead of failing silently.
 
 ### Read from file
 
 ```bash
-terraform plan -no-color > plan.txt
-terraprism plan.txt
+terraform show -json plan.bin > plan.json
+terraprism plan.json
 ```
 
 ### Print mode (non-interactive)
 
 ```bash
-terraform plan -no-color | terraprism -p
+terraform show -json plan.bin | terraprism -p
 ```
 
 ## Keyboard Controls
@@ -140,8 +145,12 @@ terraform plan -no-color | terraprism -p
 | `u` / `Ctrl+U` | Scroll half page up |
 | `Ctrl+E` | Scroll one line down |
 | `Ctrl+Y` | Scroll one line up |
+| `H` | Scroll sideways left |
+| `L` | Scroll sideways right |
 | `+` / `=` | Show more unchanged context around diff hunks |
 | `-` | Show less unchanged context around diff hunks |
+
+Some lines are deliberately never word-wrapped (an `old → new` update diff, or a resource's own address line) — use `H`/`L` (capitalized, since `h`/`l` already collapse/expand) to scroll sideways and read the rest.
 
 ### Expand/Collapse
 | Key | Action |
@@ -154,9 +163,16 @@ terraform plan -no-color | terraprism -p
 | `Shift+E` | Expand all visible resources and all nested foldable sub-blocks |
 | `Shift+C` | Collapse all visible resources and all nested foldable sub-blocks |
 
-Large maps, lists, and heredocs inside expanded resources become foldable sub-blocks. Large sub-blocks collapse by default; use `l`/`→` or `Enter`/`Space` to expand them, then `Ctrl+E`/`Ctrl+Y` to scroll through the expanded content without moving the selection. When a resource or sub-block is selected, `e` and `c` recursively expand or collapse the foldable content underneath that selection.
+Large maps and lists inside expanded resources become foldable sub-blocks. Large sub-blocks collapse by default; use `l`/`→` or `Enter`/`Space` to expand them, then `Ctrl+E`/`Ctrl+Y` to scroll through the expanded content without moving the selection. When a resource or sub-block is selected, `e` and `c` recursively expand or collapse the foldable content underneath that selection.
 
-Paired remove/add heredocs are shown as one foldable diff section so large values changes can be reviewed as a focused line diff. Use `+`/`=` and `-` to increase or decrease the unchanged context shown around each diff hunk.
+Multi-line string values (Helm chart values, cloud-init scripts, JSON policy documents) are shown as a focused line-by-line diff rather than one opaque blob. Use `+`/`=` and `-` to increase or decrease the unchanged context shown around each diff hunk.
+
+### Sensitive Values
+| Key | Action |
+|-----|--------|
+| `x` | Reveal/hide the real value of sensitive attributes |
+
+Sensitive attributes are redacted as `(sensitive value)` by default, matching Terraform CLI. Press `x` to reveal the real diff for the rest of the session (off again next time you run `terraprism`); press it again to re-redact.
 
 ### Search
 | Key | Action |
@@ -184,8 +200,24 @@ Sort options: default (plan order), by action, by address, by type.
 ### Apply (in apply mode)
 | Key | Action |
 |-----|--------|
-| `a` | Apply the plan |
+| `a` | Apply the plan (only offered once, and only if the plan has changes) |
 | `y` | Confirm apply |
+
+Once apply finishes, a banner shows the result and auto-quits after 10 seconds (press `q` to quit immediately, or `Esc` to cancel the countdown and keep reviewing). Applying again requires a fresh `terraprism apply` (a full re-plan), since the plan file just applied is now stale.
+
+### Output Pane (plan/apply mode)
+| Key | Action |
+|-----|--------|
+| `o` | Toggle the live terraform/tofu output pane |
+| `j`/`k`, `gg`/`G` | Navigate the pane |
+| `/`, `n`/`N` | Search within the pane, highlighting matches; cycle matches |
+| `w` | Toggle word wrap (off by default) |
+| `h`/`l` or `←`/`→` | Scroll sideways (when word wrap is off) |
+
+The pane opens automatically as soon as `plan` starts, before it even
+finishes, and again when `apply` starts once confirmed — quitting is
+disabled for the duration of either so a running `terraform`/`tofu`
+process is never orphaned.
 
 ### State Mode (state list/show/rm)
 | Key | Action |
@@ -225,8 +257,8 @@ Automatically switches to darker, more visible colors on light backgrounds.
 
 ### Force a theme
 ```bash
-TERRAPRISM_THEME=dark terraprism plan.txt   # Force dark mode
-TERRAPRISM_THEME=light terraprism plan.txt # Force light mode
+TERRAPRISM_THEME=dark terraprism plan.json   # Force dark mode
+TERRAPRISM_THEME=light terraprism plan.json  # Force light mode
 ```
 
 ## Commands
@@ -338,7 +370,13 @@ Search by project, command, status, date, or path:
 
 ### File Naming
 
-Files are named: `YYYY-MM-DD_HH-MM-SS_<project>_<command>[_<status>].txt`
+Files are named: `YYYY-MM-DD_HH-MM-SS_<project>_<command>[_<status>].json`
+
+Each file is a JSON envelope containing terraprism's own metadata
+(timestamp, command, working directory, args) alongside the raw
+`terraform show -json` plan bytes, so it's directly inspectable with `jq`.
+Upgrading from a version prior to the JSON-based rewrite invalidates old
+`.txt` history files — they are no longer read by `terraprism history`.
 
 - `plan` - Plan-only commands
 - `apply` - Apply commands (status: success, failed, cancelled)
@@ -351,6 +389,13 @@ terraprism history list --clear      # Delete all history files
 ```
 
 History is automatically cleaned up when exceeding 100 files (oldest removed first).
+
+`plan`/`apply` also briefly write a binary plan file (`terraprism-*.tfplan`)
+into the same `~/.terraprism/` directory — it's not a history entry (only
+`.json` files show up in `history list`/`view`) and is removed
+automatically once the run finishes. If a run is ever killed before it
+can clean up after itself, any leftover `.tfplan` file older than 5 hours
+is swept the next time you run `plan` or `apply`.
 
 ## Why Terra-Prism?
 
@@ -378,7 +423,9 @@ Terra-Prism solves these problems:
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for how the codebase is put together
+(package responsibilities, data flow, and the plan data model).
 
 ### Development
 

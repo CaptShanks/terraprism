@@ -1,0 +1,43 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "resource_changes": [
+    {
+      "address": "aws_instance.web",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "ami": "ami-0123456789abcdef0",
+          "instance_type": "t3.micro",
+          "tags": {
+            "Environment": "staging",
+            "Name": "web"
+          }
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "tags": {}
+        }
+      }
+    }
+  ],
+  "output_changes": {
+    "instance_id": {
+      "actions": ["create"],
+      "before": null,
+      "after": null,
+      "after_unknown": true,
+      "before_sensitive": false,
+      "after_sensitive": false
+    }
+  }
+}

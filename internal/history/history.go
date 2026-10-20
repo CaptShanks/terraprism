@@ -2,6 +2,7 @@
 package history
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,6 +27,20 @@ const (
 	// MaxHistoryFiles is the maximum number of history files to keep
 	// Older files are automatically cleaned up
 	MaxHistoryFiles = 100
+
+	fileExt = ".json"
+
+	// stalePlanFileAge is how old an orphaned interim plan file has to be
+	// before CleanupStalePlanFiles removes it. terraprism can run multiple
+	// sessions in parallel, each with its own plan file live in
+	// ~/.terraprism/ at the same time, so this only ever removes files far
+	// older than any realistic single plan/apply review session -- a
+	// concurrent session's own in-progress file is always much younger and
+	// is never at risk. A normal plan/apply cycle finishes in minutes and
+	// always cleans up its own plan file either way; this is a backstop
+	// for the one case code can't guarantee against -- a hard kill
+	// (SIGKILL) that skips cleanup entirely.
+	stalePlanFileAge = 5 * time.Hour
 )
 
 // Entry represents a history file entry
@@ -37,6 +52,24 @@ type Entry struct {
 	Status     string // pending, success, failed, cancelled (for apply/destroy)
 	Filename   string
 	WorkingDir string // full absolute path of terraform project
+}
+
+// Meta is the terraprism-owned metadata stored alongside each plan in a
+// history file's envelope.
+type Meta struct {
+	Timestamp  time.Time `json:"timestamp"`
+	Command    string    `json:"command"`    // "plan", "apply", or "destroy"
+	TFCommand  string    `json:"tf_command"` // "terraform" or "tofu"
+	Args       []string  `json:"args"`
+	WorkingDir string    `json:"working_dir"`
+}
+
+// FileEnvelope is the on-disk shape of a history file: terraprism's own
+// metadata alongside the raw `terraform show -json` plan bytes, stored
+// verbatim so it stays decodable by any future tfplan.Decode version.
+type FileEnvelope struct {
+	Meta Meta            `json:"terraprism_meta"`
+	Plan json.RawMessage `json:"plan"`
 }
 
 // GetHistoryDir returns the path to the history directory
@@ -63,14 +96,15 @@ func EnsureHistoryDir() (string, error) {
 }
 
 // GenerateFilename creates a filename for a history entry
-// Format: YYYY-MM-DD_HH-MM-SS_<project>_<command>.txt
+// Format: YYYY-MM-DD_HH-MM-SS_<project>_<command>.json
 func GenerateFilename(command string) string {
 	now := time.Now()
 	project := sanitizeProjectName(GetWorkingDir())
-	return fmt.Sprintf("%s_%s_%s.txt",
+	return fmt.Sprintf("%s_%s_%s%s",
 		now.Format("2006-01-02_15-04-05"),
 		project,
 		command,
+		fileExt,
 	)
 }
 
@@ -103,8 +137,9 @@ func sanitizeProjectName(name string) string {
 	return name
 }
 
-// CreateHistoryFile creates a new history file and returns its path
-func CreateHistoryFile(command string, content string) (string, error) {
+// CreateHistoryFile writes a new history file (metadata envelope + raw
+// plan JSON) and returns its path.
+func CreateHistoryFile(command string, meta Meta, planJSON []byte) (string, error) {
 	dir, err := EnsureHistoryDir()
 	if err != nil {
 		return "", err
@@ -113,39 +148,40 @@ func CreateHistoryFile(command string, content string) (string, error) {
 	filename := GenerateFilename(command)
 	path := filepath.Join(dir, filename)
 
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	envelope := FileEnvelope{Meta: meta, Plan: json.RawMessage(planJSON)}
+	data, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal history envelope: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return "", fmt.Errorf("failed to write history file: %w", err)
 	}
 
 	return path, nil
 }
 
-// AppendToHistoryFile appends content to an existing history file
-func AppendToHistoryFile(path string, content string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+// ReadEnvelope reads and decodes a history file's envelope.
+func ReadEnvelope(path string) (*FileEnvelope, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("failed to open history file: %w", err)
+		return nil, fmt.Errorf("failed to read history file: %w", err)
 	}
-	defer f.Close()
-
-	if _, err := f.WriteString(content); err != nil {
-		return fmt.Errorf("failed to append to history file: %w", err)
+	var envelope FileEnvelope
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, fmt.Errorf("failed to parse history file: %w", err)
 	}
-
-	return nil
+	return &envelope, nil
 }
 
-// UpdateFilenameWithStatus renames a history file to include the status
-// e.g., 2024-01-09_10-30-00_apply.txt -> 2024-01-09_10-30-00_apply_success.txt
+// UpdateFilenameWithStatus renames a history file to include the status,
+// e.g. 2024-01-09_10-30-00_myproj_apply.json -> ..._apply_success.json
 func UpdateFilenameWithStatus(oldPath string, status string) (string, error) {
 	dir := filepath.Dir(oldPath)
 	filename := filepath.Base(oldPath)
 
-	// Remove .txt extension
-	base := strings.TrimSuffix(filename, ".txt")
-
-	// Add status suffix
-	newFilename := fmt.Sprintf("%s_%s.txt", base, status)
+	base := strings.TrimSuffix(filename, fileExt)
+	newFilename := fmt.Sprintf("%s_%s%s", base, status, fileExt)
 	newPath := filepath.Join(dir, newFilename)
 
 	if err := os.Rename(oldPath, newPath); err != nil {
@@ -155,31 +191,44 @@ func UpdateFilenameWithStatus(oldPath string, status string) (string, error) {
 	return newPath, nil
 }
 
-// extractWorkingDir reads the first few lines of a history file to extract the working directory
-func extractWorkingDir(filePath string) string {
-	file, err := os.Open(filePath)
+// readMeta reads just the terraprism_meta block of a history file. It
+// streams the file token-by-token and stops as soon as terraprism_meta
+// has been decoded, so it never reads the (potentially many hundreds of
+// MB) plan payload that follows it into memory -- unlike os.ReadFile +
+// json.Unmarshal, which must read and scan the entire file regardless of
+// which fields are actually needed. This matters because readMeta runs
+// once per history file on every plan/apply invocation (via
+// CleanupOldFiles), so its cost is otherwise multiplied by however many
+// history files have accumulated.
+func readMeta(path string) Meta {
+	f, err := os.Open(path)
 	if err != nil {
-		return ""
+		return Meta{}
 	}
-	defer file.Close()
+	defer f.Close()
 
-	// Read first 512 bytes which should contain the header
-	buf := make([]byte, 512)
-	n, err := file.Read(buf)
-	if err != nil || n == 0 {
-		return ""
+	dec := json.NewDecoder(f)
+	if _, err := dec.Token(); err != nil { // consume opening '{'
+		return Meta{}
 	}
-
-	content := string(buf[:n])
-	lines := strings.Split(content, "\n")
-
-	for _, line := range lines {
-		if strings.HasPrefix(line, "Working Dir:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "Working Dir:"))
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return Meta{}
+		}
+		if key, _ := keyTok.(string); key == "terraprism_meta" {
+			var meta Meta
+			if err := dec.Decode(&meta); err != nil {
+				return Meta{}
+			}
+			return meta
+		}
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return Meta{}
 		}
 	}
-
-	return ""
+	return Meta{}
 }
 
 // ListEntries returns all history entries, sorted by timestamp (newest first)
@@ -201,7 +250,7 @@ func ListEntries(filterCommand string) ([]Entry, error) {
 
 	var entries []Entry
 	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".txt") {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), fileExt) {
 			continue
 		}
 
@@ -212,9 +261,7 @@ func ListEntries(filterCommand string) ([]Entry, error) {
 
 		entry.Path = filepath.Join(dir, f.Name())
 		entry.Filename = f.Name()
-
-		// Extract working directory from file header
-		entry.WorkingDir = extractWorkingDir(entry.Path)
+		entry.WorkingDir = readMeta(entry.Path).WorkingDir
 
 		// Filter by command if specified
 		if filterCommand != "" && entry.Command != filterCommand {
@@ -254,18 +301,52 @@ func CleanupOldFiles() (int, error) {
 	return deleted, nil
 }
 
-// parseFilename parses a history filename into an Entry
-// New format: YYYY-MM-DD_HH-MM-SS_<project>_<command>[_<status>].txt
-// Old format: YYYY-MM-DD_HH-MM-SS_<command>[_<status>].txt (for backwards compatibility)
+// CleanupStalePlanFiles removes any interim binary plan file
+// (terraform plan -out=<this>) left behind in the history directory by
+// a process that was killed before it could clean up after itself.
+// Safe to call on every new plan invocation (see internal/runner) --
+// most of the time there's nothing to remove.
+func CleanupStalePlanFiles() (int, error) {
+	dir, err := GetHistoryDir()
+	if err != nil {
+		return 0, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	cutoff := time.Now().Add(-stalePlanFileAge)
+	deleted := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasPrefix(name, "terraprism-") || !strings.HasSuffix(name, ".tfplan") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err == nil {
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
+// parseFilename parses a history filename into an Entry.
+// Format: YYYY-MM-DD_HH-MM-SS_<project>_<command>[_<status>].json
 func parseFilename(filename string) (Entry, error) {
-	base := strings.TrimSuffix(filename, ".txt")
+	base := strings.TrimSuffix(filename, fileExt)
 	parts := strings.Split(base, "_")
 
-	if len(parts) < 3 {
+	if len(parts) < 4 {
 		return Entry{}, fmt.Errorf("invalid filename format")
 	}
 
-	// Parse timestamp (first two parts: date and time)
 	dateStr := parts[0]
 	timeStr := parts[1]
 	timestamp, err := time.Parse("2006-01-02_15-04-05", dateStr+"_"+timeStr)
@@ -275,43 +356,13 @@ func parseFilename(filename string) (Entry, error) {
 
 	knownCommands := map[string]bool{"plan": true, "apply": true, "destroy": true}
 
-	var project, command, status string
-
-	// Determine format based on number of parts and content
-	// 3 parts: old format without status (date_time_command)
-	// 4 parts: could be old+status OR new without status - check if parts[3] is a command
-	// 5+ parts: new format with status (date_time_project_command_status)
-	switch len(parts) {
-	case 3:
-		// Old format: date_time_command
-		project = ""
-		command = parts[2]
-		status = ""
-
-	case 4:
-		// Ambiguous: could be old+status OR new without status
-		// If parts[3] is a known command, it's new format (project_command)
-		// Otherwise it's old format (command_status)
-		if knownCommands[parts[3]] {
-			// New format: date_time_project_command
-			project = parts[2]
-			command = parts[3]
-			status = ""
-		} else {
-			// Old format: date_time_command_status
-			project = ""
-			command = parts[2]
-			status = parts[3]
-		}
-
-	default: // 5+ parts
-		// New format: date_time_project_command_status
-		project = parts[2]
-		command = parts[3]
+	project := parts[2]
+	command := parts[3]
+	status := ""
+	if len(parts) >= 5 {
 		status = parts[4]
 	}
 
-	// Validate command is known
 	if !knownCommands[command] {
 		return Entry{}, fmt.Errorf("unknown command: %s", command)
 	}
@@ -396,7 +447,6 @@ func FormatEntryWithPath(e Entry) string {
 	)
 }
 
-// GetWorkingDir returns the current working directory name for context
 // GetWorkingDir returns the current working directory basename for context
 func GetWorkingDir() string {
 	wd, err := os.Getwd()
@@ -413,47 +463,4 @@ func GetFullWorkingDir() string {
 		return "unknown"
 	}
 	return wd
-}
-
-// CreateHistoryHeader creates a header for the history file
-func CreateHistoryHeader(command string, tfCmd string, args []string) string {
-	wd := GetFullWorkingDir() // Use full path for history
-	now := time.Now()
-
-	header := fmt.Sprintf(`================================================================================
-Terra-Prism History Log
-================================================================================
-Timestamp:   %s
-Command:     %s %s
-Working Dir: %s
-Arguments:   %s
-================================================================================
-
-`, now.Format("2006-01-02 15:04:05 MST"),
-		tfCmd, command,
-		wd,
-		strings.Join(args, " "),
-	)
-
-	return header
-}
-
-// CreateApplyResultFooter creates a footer with apply results
-func CreateApplyResultFooter(success bool, err error) string {
-	now := time.Now()
-	status := "SUCCESS"
-	errMsg := ""
-	if !success {
-		status = "FAILED"
-		if err != nil {
-			errMsg = fmt.Sprintf("\nError: %v", err)
-		}
-	}
-
-	return fmt.Sprintf(`
-================================================================================
-Apply Result: %s
-Completed:    %s%s
-================================================================================
-`, status, now.Format("2006-01-02 15:04:05 MST"), errMsg)
 }

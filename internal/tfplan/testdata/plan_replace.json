@@ -1,0 +1,46 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "resource_changes": [
+    {
+      "address": "aws_instance.destroy_before_create",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "destroy_before_create",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "action_reason": "requested",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "ami": "ami-old"
+        },
+        "after": {
+          "ami": "ami-new"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    },
+    {
+      "address": "aws_instance.create_before_destroy",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "create_before_destroy",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create", "delete"],
+        "before": {
+          "ami": "ami-old"
+        },
+        "after": {
+          "ami": "ami-new"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

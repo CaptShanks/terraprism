@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Live streaming: `terraprism plan`/`apply`/`destroy` now open the TUI
+  immediately, before `plan` even runs, with a hideable output pane
+  (`o`) that streams `terraform`/`tofu`'s real output live — for both
+  the `plan` phase and, once confirmed, `apply`.
+- Output pane search — `/` highlights every matched occurrence in the
+  visible text, not just scrolls to it.
+- Output pane word wrap — toggle with `w` (off by default); wrapped
+  lines never need horizontal scrolling even when they contain long
+  unbreakable tokens (ARNs, hashes, etc.).
+- Output pane horizontal scrolling — `h`/`l` or `←`/`→` to inspect long
+  lines when word wrap is off.
+
+### Changed
+
+- `internal/tfplan` rewritten to decode `terraform show -json` via
+  `hashicorp/terraform-json` into a pre-diffed attribute tree, replacing
+  the previous regex/text-based plan parser.
+- The interactive tree/search/filter/sort layer moved into
+  `internal/foldtree`, a generic, plan-agnostic TUI toolkit (also used by
+  the new output pane and by `cmd/foldtree-demo`), with `internal/tui`
+  reduced to a thin Terraform-specific adapter on top of it.
+
+### Fixed
+
+- Attributes — and whole nested blocks, e.g. a `helm_release`'s
+  `metadata` — that exist before an apply and become wholly unknown on
+  update now correctly show "(known after apply)" instead of rendering
+  as a plain deletion. A collapsed block whose entire value is unknown
+  now shows the same marker on its own collapsed summary line, not just
+  once expanded.
+- `c` now collapses the nearest collapsible ancestor when pressed on a
+  leaf row (previously a no-op there, since only resources and nested
+  blocks are themselves collapsible — most attribute rows are leaves).
+- History bookkeeping no longer re-reads and re-parses every history
+  file's full plan payload on every single plan/apply run just to check
+  file ages for cleanup; it now reads only the small metadata block each
+  file starts with.
+- The cached "update available" result is invalidated when the running
+  version changes, instead of replaying a stale answer for up to the
+  full 7-day cache interval.
+- Restored fold/collapse for multi-line string diffs, fixed viewport
+  oscillation/drift at free-scroll boundaries, and fixed mouse-wheel
+  scroll snapping at the top/bottom of the list.
+- CI: `golangci-lint` was failing outright — `.golangci.yml` uses the v2
+  config schema, but CI was pinned to a v1 binary that doesn't recognize
+  it. Bumped `golangci-lint-action`/`golangci-lint` to the v2 line, and
+  fixed the two `staticcheck` findings that surfaced once linting could
+  actually run.
+- CI: fixed 8 `gosec` findings — unchecked errors on best-effort cleanup
+  calls (`pw.Close()`, temp plan-file removal) in `internal/runner`.
+- CI: bumped `actions/checkout`, `actions/setup-go`, `golangci-lint-action`,
+  and `gosec` off versions that targeted the now-deprecated Node.js 20
+  runner.
+
+### Performance
+
+- Replaced per-call lipgloss styling with precomputed ANSI wrapping on
+  the hottest per-row render path, avoiding a user-visible stall on
+  large plans.
+
 ## [0.12.0] - 2026-05-01
 
 ### Added
@@ -168,7 +230,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove `borderColor`, fix deprecated viewport methods
 - CI: use Go 1.22 and add golangci config
 
-[Unreleased]: https://github.com/CaptShanks/terraprism/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/CaptShanks/terraprism/compare/v0.13.0...HEAD
 [0.12.0]: https://github.com/CaptShanks/terraprism/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/CaptShanks/terraprism/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/CaptShanks/terraprism/compare/v0.9.0...v0.10.0

@@ -1,0 +1,33 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.10",
+  "resource_changes": [
+    {
+      "address": "helm_release.chart",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "chart",
+      "provider_name": "registry.opentofu.org/hashicorp/helm",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "id": "external-dns",
+          "chart": "external-dns",
+          "metadata": {
+            "app_version": "0.21.0",
+            "chart": "external-dns",
+            "revision": 7
+          }
+        },
+        "after": {
+          "chart": "external-dns"
+        },
+        "after_unknown": {
+          "id": true,
+          "metadata": true
+        }
+      }
+    }
+  ],
+  "output_changes": {}
+}

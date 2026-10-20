@@ -7,9 +7,16 @@ require (
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/hashicorp/terraform-json v0.28.0
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
 	github.com/rhysd/go-github-selfupdate v1.2.3
+)
+
+require (
+	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
+	github.com/hashicorp/go-version v1.9.0 // indirect
+	github.com/zclconf/go-cty v1.16.4 // indirect
 )
 
 require (
@@ -38,7 +45,7 @@ require (
 	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3 // indirect
 	golang.org/x/oauth2 v0.0.0-20181106182150-f42d05182288 // indirect
 	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.3.8 // indirect
+	golang.org/x/text v0.11.0 // indirect
 	google.golang.org/appengine v1.3.0 // indirect
 )
 
