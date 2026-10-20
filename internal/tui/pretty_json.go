@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/CaptShanks/terraprism/internal/tfplan"
 )
@@ -73,13 +74,57 @@ func isJSONContainerAttr(attr tfplan.Attribute) bool {
 // produce one (a minified JSON blob has no literal newlines of its own,
 // so isMultilineStringAttr alone would never catch it).
 //
-// Always false for a non-sensitive attribute: an ordinary JSON-shaped
-// attribute keeps its existing flat rendering -- this is deliberately
-// scoped to the sensitive-reveal path only, not a general "pretty-print
-// any JSON string" feature.
+// Always false for a non-sensitive attribute -- used only to decide
+// whether a sensitive value may be shown at all once revealed (see
+// buildAttributeNodes); it has nothing to do with whether an *ordinary*
+// attribute gets JSON pretty-printing, which is unconditional (see
+// multilineDisplayText) since there's no redaction to gate there.
 func sensitiveRevealsAsHeredoc(attr tfplan.Attribute) bool {
 	if !attr.Sensitive {
 		return false
 	}
 	return isMultilineStringAttr(attr) || isJSONContainerAttr(attr)
+}
+
+// multilineDisplayText returns the text to diff for one side (Old or
+// New) of a value being rendered as a foldable multi-line block: the
+// value as-is if it's already a string containing a real line break (an
+// ordinary multi-line string is never touched further, so an
+// already-pretty JSON blob's own key order and formatting are never
+// disturbed), otherwise its pretty-printed form if it's JSON-shaped (a
+// minified blob, or a whole-subtree-sensitive container's raw
+// map/list, has no line structure of its own to diff), otherwise the
+// plain string unchanged (possibly "" for a non-string, non-JSON value).
+//
+// Deliberately not gated on Sensitive: once a value has been decided to
+// render as a multi-line block at all (isMultilineStringAttr or
+// isJSONContainerAttr, checked by the caller), pretty-printing it if
+// it's JSON-shaped is always an improvement, sensitive or not.
+func multilineDisplayText(v any) string {
+	if s, ok := v.(string); ok && strings.Contains(s, "\n") {
+		return s
+	}
+	if pretty, ok := TryPrettyPrintJSON(v); ok {
+		return pretty
+	}
+	s, _ := v.(string)
+	return s
+}
+
+// jsonPrettyPrintApplies reports whether rendering this attribute's diff
+// body actually involves pretty-printing a JSON value on at least one
+// side -- used for the "(JSON, pretty-printed)" header cue. Stricter
+// than isJSONContainerAttr: an already-multi-line value that also
+// happens to be valid JSON is shown as-is by multilineDisplayText (its
+// formatting is never touched), so it must not claim to be
+// pretty-printed.
+func jsonPrettyPrintApplies(attr tfplan.Attribute) bool {
+	sideApplies := func(v any) bool {
+		if s, ok := v.(string); ok && strings.Contains(s, "\n") {
+			return false
+		}
+		_, ok := TryPrettyPrintJSON(v)
+		return ok
+	}
+	return sideApplies(attr.Old) || sideApplies(attr.New)
 }

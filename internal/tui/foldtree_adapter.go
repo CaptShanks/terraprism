@@ -153,7 +153,15 @@ func (m *Model) buildAttributeNodes(address string, attrs []tfplan.Attribute, de
 			continue
 		}
 
-		if isMultilineStringAttr(attr) || sensitiveRevealsAsHeredoc(attr) {
+		// isJSONContainerAttr here (not sensitiveRevealsAsHeredoc) is
+		// deliberate: an ordinary, non-sensitive JSON-shaped attribute
+		// (e.g. a jsonencode() policy on an update, which renderLeafRow
+		// never word-wraps regardless of length) gets the same foldable
+		// pretty-printed diff too, not just a revealed secret. Any
+		// sensitive attribute reaching this point already passed the
+		// revealsAsHeredoc check above, so this is never reached while
+		// one is still redacted.
+		if isMultilineStringAttr(attr) || isJSONContainerAttr(attr) {
 			id := foldKey(address, attr.Path)
 
 			body := m.renderMultilineStringBody(attr, indent, maxWidth)

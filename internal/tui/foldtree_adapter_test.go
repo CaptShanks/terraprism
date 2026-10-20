@@ -500,6 +500,76 @@ func TestSensitiveWholeSubtreeContainerRevealsAsHeredocDiff(t *testing.T) {
 	}
 }
 
+// An ordinary (non-sensitive) JSON-encoded attribute on an update --
+// e.g. a jsonencode() IAM policy -- has no literal newlines of its own
+// (jsonencode always produces a minified string) and renderLeafRow
+// never word-wraps an update row regardless of length, so without this
+// it renders as one unreadable, untruncated line just like a revealed
+// secret used to. Pretty-printing isn't a sensitive-only concern: it
+// applies here unconditionally, same as for a revealed secret.
+func TestNonSensitiveJSONUpdateRevealsAsHeredocDiff(t *testing.T) {
+	oldJSON := `{"Sid":"Allow","Principal":{"AWS":["arn:a","arn:b"]}}`
+	newJSON := `{"Sid":"AllowRenamed","Principal":{"AWS":["arn:a","arn:b"]}}`
+	r := tfplan.Resource{
+		Address: "aws_s3_bucket_policy.this",
+		Attributes: withPaths([]tfplan.Attribute{
+			{Name: "policy", Kind: tfplan.KindString, Action: tfplan.ActionUpdate, Old: oldJSON, New: newJSON},
+		}, ""),
+	}
+	m := testModelForAdapter(120, 40, defaultDiffContext)
+
+	node := m.buildResourceNode(r)
+	info := payloadOf(t, node.Children[0])
+	if info.kind != rowMultilineHeader {
+		t.Fatalf("kind = %v, want rowMultilineHeader (ordinary JSON-shaped update must get the heredoc diff too)", info.kind)
+	}
+	body := stripRenderANSI(payloadOf(t, node.Children[0].Children[0]).text)
+	for _, want := range []string{`"Sid": "Allow"`, `"Sid": "AllowRenamed"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("revealed body = %q, want it to contain pretty-printed line %q", body, want)
+		}
+	}
+
+	row := foldtree.Row{Payload: rowInfo{kind: rowMultilineHeader, attr: info.attr, keyed: info.keyed}}
+	header := stripRenderANSI(m.RenderRow(row, false, 120, ""))
+	if !strings.Contains(header, "JSON") {
+		t.Fatalf("header = %q, want a JSON marker noting the diff is against a pretty-printed reformat", header)
+	}
+}
+
+// Regression guard: an ordinary multi-line string that *also* happens to
+// be syntactically valid JSON (e.g. a hand-formatted multi-line JSON
+// config with its own deliberate key order) must be shown exactly as-is
+// -- re-marshaling it would reorder keys and silently change its
+// formatting, which only makes sense for content that had no line
+// structure of its own to begin with.
+func TestAlreadyMultilineJSONIsNotReformatted(t *testing.T) {
+	// Deliberately not key-sorted: json.Marshal would reorder this if it
+	// got re-marshaled, which is exactly what must not happen here.
+	oldJSON := "{\n  \"z\": 1,\n  \"a\": 2\n}"
+	newJSON := "{\n  \"z\": 1,\n  \"a\": 3\n}"
+	r := tfplan.Resource{
+		Address: "null_resource.config",
+		Attributes: withPaths([]tfplan.Attribute{
+			{Name: "config", Kind: tfplan.KindString, Action: tfplan.ActionUpdate, Old: oldJSON, New: newJSON},
+		}, ""),
+	}
+	m := testModelForAdapter(120, 40, defaultDiffContext)
+
+	node := m.buildResourceNode(r)
+	info := payloadOf(t, node.Children[0])
+	body := stripRenderANSI(payloadOf(t, node.Children[0].Children[0]).text)
+	if !strings.Contains(body, `"z": 1`) {
+		t.Fatalf("body = %q, want the original key order (\"z\" before \"a\") preserved, not re-sorted", body)
+	}
+
+	row := foldtree.Row{Payload: rowInfo{kind: rowMultilineHeader, attr: info.attr, keyed: info.keyed}}
+	header := stripRenderANSI(m.RenderRow(row, false, 120, ""))
+	if strings.Contains(header, "JSON") {
+		t.Fatalf("header = %q, should not claim pretty-printing for a value that was never reformatted", header)
+	}
+}
+
 // Synthetic IDs must be deterministic across rebuilds of the identical
 // data, since foldtree's cursor-preservation-by-ID depends on it -- if
 // the cursor happens to sit on a closing bracket / EOT / noop-note row

@@ -985,10 +985,12 @@ func (m Model) RenderRow(row foldtree.Row, selected bool, width int, searchQuery
 	case rowMultilineHeader:
 		indent := strings.Repeat("  ", row.Depth)
 		opener := "<<EOT"
-		if info.attr.Sensitive && isJSONContainerAttr(info.attr) {
+		if jsonPrettyPrintApplies(info.attr) {
 			// Flags that the diff below is against a pretty-printed
 			// reformat, not the literal raw value -- relevant if someone
-			// copies it out (whitespace/key order can differ).
+			// copies it out (whitespace/key order can differ). Applies
+			// regardless of sensitivity: an ordinary JSON-shaped attribute
+			// gets pretty-printed the same as a revealed secret.
 			opener = "<<EOT (JSON, pretty-printed)"
 		}
 		return m.renderFoldHeader(indent, info.attr, info.keyed, row.Collapsed, selected, width, opener, multilineFoldSummary(info.attr))
@@ -1050,10 +1052,10 @@ func isContainerAttr(a tfplan.Attribute) bool {
 // container, or open+close plus diffed line count for a multi-line
 // string — used to decide the default collapsed/expanded state.
 func countRenderedLines(a tfplan.Attribute) int {
-	// sensitiveRevealsAsHeredoc alone would miss a non-sensitive
-	// multiline string (it's always false unless a.Sensitive), so both
-	// checks stay explicit rather than one subsuming the other.
-	if isMultilineStringAttr(a) || sensitiveRevealsAsHeredoc(a) {
+	// Matches the routing check in buildAttributeNodes exactly (isJSONContainerAttr
+	// catches an ordinary, non-sensitive JSON-shaped attribute too, not just a
+	// revealed secret) so this estimate lines up with what's actually rendered.
+	if isMultilineStringAttr(a) || isJSONContainerAttr(a) {
 		return multilineLineEstimate(a) + 2
 	}
 	if !isContainerAttr(a) {
@@ -1069,18 +1071,13 @@ func countRenderedLines(a tfplan.Attribute) int {
 // multilineLineEstimate returns the larger of the old/new value's line
 // count, for sizing the default-collapse heuristic and the collapsed
 // "... (N lines)" summary — doesn't need to be exact, just representative.
-// For a sensitive attribute, a JSON-shaped value is pretty-printed first
-// (see renderMultilineStringBody), so the estimate has to match that or
-// the collapsed summary would report the wrong line count.
+// Uses multilineDisplayText (the same text renderMultilineStringBody
+// actually diffs) rather than the raw value, so a JSON-shaped value's
+// estimate reflects its pretty-printed form, not its original line count.
 func multilineLineEstimate(a tfplan.Attribute) int {
 	count := func(v any) int {
-		s, ok := v.(string)
-		if a.Sensitive {
-			if pretty, ok2 := TryPrettyPrintJSON(v); ok2 {
-				s, ok = pretty, true
-			}
-		}
-		if !ok {
+		s := multilineDisplayText(v)
+		if s == "" {
 			return 0
 		}
 		return strings.Count(s, "\n") + 1
@@ -1271,27 +1268,16 @@ func (m Model) renderMultilineStringBody(attr tfplan.Attribute, indent string, m
 		return b.String()
 	}
 
-	// A sensitive value's real Old/New is pretty-printed first when it's
-	// JSON-shaped -- a minified JSON blob (or a whole-subtree-sensitive
-	// container's raw map/list) has no line structure of its own to
-	// diff, so without this it would still render as one unreadable
-	// line even after being routed here. Scoped to Sensitive so an
-	// ordinary multi-line string's existing rendering (already
-	// literal-newline text, possibly independently valid JSON) is never
-	// affected -- re-marshaling would risk reordering its keys.
-	var oldStr, newStr string
-	if attr.Sensitive {
-		var ok bool
-		if oldStr, ok = TryPrettyPrintJSON(attr.Old); !ok {
-			oldStr, _ = attr.Old.(string)
-		}
-		if newStr, ok = TryPrettyPrintJSON(attr.New); !ok {
-			newStr, _ = attr.New.(string)
-		}
-	} else {
-		oldStr, _ = attr.Old.(string)
-		newStr, _ = attr.New.(string)
-	}
+	// multilineDisplayText pretty-prints a JSON-shaped value first (a
+	// minified blob, or a whole-subtree-sensitive container's raw
+	// map/list, has no line structure of its own to diff) and leaves an
+	// already-multi-line value untouched otherwise, so an existing
+	// literal-newline string's own formatting/key order is never
+	// disturbed by re-marshaling. Not gated on Sensitive: an ordinary
+	// JSON-shaped attribute (e.g. a jsonencode() policy on an update)
+	// benefits from this exactly the same way a revealed secret does.
+	oldStr := multilineDisplayText(attr.Old)
+	newStr := multilineDisplayText(attr.New)
 
 	switch attr.Action {
 	case tfplan.ActionCreate:
