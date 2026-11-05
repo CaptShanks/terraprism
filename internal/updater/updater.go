@@ -66,6 +66,18 @@ To upgrade manually, run:
   curl -sSfL %s | sh`, reason, installScriptURL)
 }
 
+func isNewer(latest, current string) bool {
+	l, err := semver.Parse(normalizeVersion(latest))
+	if err != nil {
+		return false
+	}
+	c, err := semver.Parse(normalizeVersion(current))
+	if err != nil {
+		return false
+	}
+	return l.GT(c)
+}
+
 func normalizeVersion(s string) string {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "v") {
@@ -115,7 +127,8 @@ func CheckLatestWithCache(currentVersion string, intervalDays int) (latestVersio
 		if json.Unmarshal(data, &cache) == nil {
 			now := time.Now().Unix()
 			if now-cache.LastCheckEpoch < intervalSec {
-				return cache.LatestVersion, cache.HasUpdate, nil
+				// Recompare against currentVersion: the cached HasUpdate is stale after an upgrade.
+				return cache.LatestVersion, isNewer(cache.LatestVersion, currentVersion), nil
 			}
 		}
 	}

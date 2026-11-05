@@ -81,3 +81,27 @@ func TestCachePath(t *testing.T) {
 		t.Errorf("cachePath should return absolute path, got: %s", path)
 	}
 }
+
+func TestIsNewer(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		latest, current string
+		want            bool
+	}{
+		{"0.13.0", "0.12.0", true},
+		{"0.13.0", "v0.12.0", true},
+		{"0.13.0", "0.13.0", false},
+		{"0.13.0", "v0.13.0", false},
+		{"0.12.0", "0.13.0", false},
+		{"", "0.12.0", false},
+		{"0.13.0", "dev", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.latest+"_vs_"+tt.current, func(t *testing.T) {
+			t.Parallel()
+			if got := isNewer(tt.latest, tt.current); got != tt.want {
+				t.Errorf("isNewer(%q, %q) = %v, want %v", tt.latest, tt.current, got, tt.want)
+			}
+		})
+	}
+}

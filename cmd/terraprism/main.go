@@ -17,7 +17,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const version = "0.12.0"
+// version is overridden at build time via -ldflags "-X main.version=..."; release tags carry a "v" prefix.
+var version = "0.12.0"
 
 var (
 	printMode  = false
@@ -44,6 +45,7 @@ func isTruthy(s string) bool {
 }
 
 func main() {
+	version = strings.TrimPrefix(version, "v")
 	args := os.Args[1:]
 
 	// Load from env vars
